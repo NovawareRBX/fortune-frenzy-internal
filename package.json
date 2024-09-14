@@ -1,0 +1,24 @@
+{
+  "name": "game1",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "npm run build && node dist/server.js",
+    "docker": "npm run build && docker stop FFInternal || true && docker rm FFInternal || true && docker rmi ff-internal:latest || true && docker build -t ff-internal . && docker run --net APIs --ip 172.18.0.11 --name FFInternal -p 3000:3000 ff-internal"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "devDependencies": {
+    "@types/node": "^22.5.1",
+    "typescript": "^5.5.4"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "fastify": "^4.28.1",
+    "mariadb": "^3.3.1",
+    "redis": "^4.7.0"
+  }
+}
