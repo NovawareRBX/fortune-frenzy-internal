@@ -16,16 +16,14 @@ const endpoints: Endpoint<Params, Body>[] = [
         authType: "none",
         requiredHeaders: ["target-user-id"], // only used for authentication
         callback: async (request: FastifyRequest<{ Params: Params }>, reply: FastifyReply) => {
+            const connection = await getMariaConnection();
             try {
-                const connection = await getMariaConnection();
                 const user_id = request.params.id;
 
                 const rows = await connection.query(
                     'INSERT INTO users (user_id) VALUES (?) ON DUPLICATE KEY UPDATE user_id = user_id RETURNING *',
                     [user_id]
                 );
-
-                await connection.release();
 
                 const result = rows[0];
                 Object.keys(result).forEach(key => typeof result[key] === 'bigint' && (result[key] = result[key].toString()));
@@ -38,6 +36,8 @@ const endpoints: Endpoint<Params, Body>[] = [
             } catch (error) {
                 console.error('Error fetching user:', error);
                 return [500, { error: 'Internal Server Error' }];
+            } finally {
+                await connection.release();
             }
         },
     }

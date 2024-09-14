@@ -15,8 +15,8 @@ const endpoints: Endpoint<Params, Body>[] = [
         url: '/marketplace/items/:id',
         authType: "none",
         callback: async (request: FastifyRequest<{ Params: Params }>, reply: FastifyReply) => {
+            const connection = await getMariaConnection();
             try {
-                const connection = await getMariaConnection();
                 const item_id = request.params.id;
 
                 const rows = await connection.query(
@@ -24,7 +24,6 @@ const endpoints: Endpoint<Params, Body>[] = [
                     [item_id]
                 )
 
-                await connection.release();
                 if (rows.length === 0) {
                     return [404, { error: 'Item not found' }];
                 }
@@ -40,6 +39,8 @@ const endpoints: Endpoint<Params, Body>[] = [
             } catch (error) {
                 console.error('Error fetching item:', error);
                 return [500, { error: 'Internal Server Error' }];
+            } finally {
+                await connection.release();
             }
         },
     },
@@ -48,26 +49,20 @@ const endpoints: Endpoint<Params, Body>[] = [
         url: "/marketplace/items",
         authType: "none",
         callback: async (request: FastifyRequest, reply: FastifyReply) => {
+            const connection = await getMariaConnection();
             try {
-                const connection = await getMariaConnection();
-
-                const rows = await connection.query(
-                    'SELECT * FROM items'
-                );
-
-                await connection.release();
+                const rows = await connection.query('SELECT * FROM items');
                 const result = rows.map((row: any) => {
                     Object.keys(row).forEach(key => typeof row[key] === 'bigint' && (row[key] = row[key].toString()));
                     return row;
                 });
 
-                return [200, {
-                    status: "OK",
-                    data: result
-                }];
+                return [200, { status: "OK", data: result }];
             } catch (error) {
                 console.error('Error fetching items:', error);
                 return [500, { error: 'Internal Server Error' }];
+            } finally {
+                await connection.release();
             }
         }
     }
