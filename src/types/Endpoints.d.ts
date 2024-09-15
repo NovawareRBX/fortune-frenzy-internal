@@ -2,7 +2,7 @@ import { FastifyRequest, FastifyReply, HTTPMethods, FastifySchema } from "fastif
 
 export type AuthType = "none" | "server_key" | "master_key";
 
-export interface Endpoint<Params = unknown, Body = unknown, Query = unknown, Headers = unknown> {
+export interface Endpoint<Params = any, Body = any, Query = any, Headers = any> {
 	method: HTTPMethods;
 	url: string;
 	authType: AuthType;

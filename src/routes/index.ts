@@ -5,16 +5,9 @@ import { getMariaConnection } from "../service/mariadb";
 import { getRedisConnection } from "../service/redis";
 import { createHash, randomBytes } from "crypto";
 import { authorization } from "../middleware/authorization";
+import { registerRoutes } from "../utilities/routeHandler";
 
-interface Params {
-	server_id: string;
-}
-
-interface Body {
-	Packet: string;
-}
-
-const endpoints: Endpoint<Params, Body>[] = [
+const endpoints: Endpoint[] = [
 	{
 		method: "GET",
 		url: "/",
@@ -27,7 +20,10 @@ const endpoints: Endpoint<Params, Body>[] = [
 		method: "POST",
 		url: "/packet/:server_id",
 		authType: "server_key",
-		callback: async (request: FastifyRequest<{ Params: Params; Body: Body }>, reply: FastifyReply) => {
+		callback: async (
+			request: FastifyRequest<{ Params: { server_id: string }; Body: { Packet: string } }>,
+			reply: FastifyReply,
+		) => {
 			return await packeter(
 				request.server,
 				request.params.server_id,
@@ -39,7 +35,7 @@ const endpoints: Endpoint<Params, Body>[] = [
 		method: "POST",
 		url: "/register/:server_id",
 		authType: "master_key",
-		callback: async (request: FastifyRequest<{ Params: Params }>, reply: FastifyReply) => {
+		callback: async (request: FastifyRequest<{ Params: { server_id: string } }>, reply: FastifyReply) => {
 			const server_id = request.params.server_id;
 			const maria = await getMariaConnection();
 			const redis = await getRedisConnection();
@@ -58,39 +54,7 @@ const endpoints: Endpoint<Params, Body>[] = [
 ];
 
 async function indexRoutes(fastify: FastifyInstance) {
-	endpoints.forEach((endpoint) => {
-		const routeOptions: RouteOptions = {
-			method: endpoint.method,
-			url: endpoint.url,
-			handler: async (request: FastifyRequest, reply: FastifyReply) => {
-				const [statusCode, response] = await endpoint.callback(
-					request as FastifyRequest<{ Params: Params; Body: Body }>,
-					reply,
-				);
-				reply.code(statusCode).send(response);
-			},
-		};
-
-		if (endpoint.authType !== "none") {
-			routeOptions.preHandler = async (request: FastifyRequest, reply: FastifyReply, done: any) => {
-				await authorization(request, endpoint.authType, endpoint.requiredHeaders);
-
-				if (endpoint.authType === "server_key" && !request.headers["packeter-master-key"]) {
-					const server_id = request.headers["server-id"] as string;
-					const redis = await getRedisConnection();
-					const new_api_key = randomBytes(32).toString("hex");
-					await redis.set(`api_key:${server_id}`, createHash("sha256").update(new_api_key).digest("hex"), {
-						EX: 60 * 5,
-					});
-					reply.header("new-api-key", new_api_key);
-				}
-
-				return;
-			};
-		}
-
-		fastify.route(routeOptions);
-	});
+	await registerRoutes(fastify, endpoints);
 }
 
 export default indexRoutes;

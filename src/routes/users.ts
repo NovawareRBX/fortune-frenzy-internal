@@ -4,17 +4,14 @@ import { getMariaConnection } from "../service/mariadb";
 import { authorization } from "../middleware/authorization";
 import { getRedisConnection } from "../service/redis";
 import { createHash, randomBytes } from "crypto";
+import { registerRoutes } from "../utilities/routeHandler";
 
-interface Params {
-	id: string;
-}
-
-const endpoints: Endpoint<Params, Body>[] = [
+const endpoints: Endpoint[] = [
 	{
 		method: "GET",
 		url: "/users/:id",
 		authType: "none",
-		callback: async (request: FastifyRequest<{ Params: Params }>, reply: FastifyReply) => {
+		callback: async (request: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
 			const connection = await getMariaConnection();
 			try {
 				const user_id = request.params.id;
@@ -47,40 +44,7 @@ const endpoints: Endpoint<Params, Body>[] = [
 ];
 
 async function userRoutes(fastify: FastifyInstance) {
-	endpoints.forEach((endpoint) => {
-		const routeOptions: RouteOptions = {
-			method: endpoint.method,
-			url: endpoint.url,
-			schema: endpoint.schema,
-			handler: async (request: FastifyRequest, reply: FastifyReply) => {
-				const [statusCode, response] = await endpoint.callback(
-					request as FastifyRequest<{ Params: Params; Body: Body }>,
-					reply,
-				);
-				reply.code(statusCode).send(response);
-			},
-		};
-
-		if (endpoint.authType !== "none") {
-			routeOptions.preHandler = async (request: FastifyRequest, reply: FastifyReply, done: any) => {
-				await authorization(request, endpoint.authType, endpoint.requiredHeaders);
-
-				if (endpoint.authType === "server_key" && !request.headers["packeter-master-key"]) {
-					const server_id = request.headers["server-id"] as string;
-					const redis = await getRedisConnection();
-					const new_api_key = randomBytes(32).toString("hex");
-					await redis.set(`api_key:${server_id}`, createHash("sha256").update(new_api_key).digest("hex"), {
-						EX: 60 * 5,
-					});
-					reply.header("new-api-key", new_api_key);
-				}
-
-				return;
-			};
-		}
-
-		fastify.route(routeOptions);
-	});
+	await registerRoutes(fastify, endpoints);
 }
 
 export default userRoutes;
