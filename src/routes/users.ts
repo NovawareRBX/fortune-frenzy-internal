@@ -41,6 +41,36 @@ const endpoints: Endpoint[] = [
 			}
 		},
 	},
+	{
+		method: "GET",
+		url: "/users/:id/inventory",
+		authType: "none",
+		callback: async (request: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
+			const connection = await getMariaConnection();
+			try {
+				const user_id = request.params.id;
+
+				const rows = await connection.query("SELECT item_id, user_asset_id, serial_number FROM item_copies WHERE owner_id = ?", [user_id]);
+				const result = rows.map((row: any) => {
+					Object.keys(row).forEach((key) => typeof row[key] === "bigint" && (row[key] = row[key].toString()));
+					return row;
+				});
+
+				return [
+					200,
+					{
+						status: "OK",
+						inventory: result,
+					},
+				];
+			} catch (error) {
+				console.error("Error fetching user inventory:", error);
+				return [500, { error: "Internal Server Error" }];
+			} finally {
+				await connection.release();
+			}
+		},
+	},
 ];
 
 async function userRoutes(fastify: FastifyInstance) {
