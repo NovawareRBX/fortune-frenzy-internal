@@ -22,7 +22,7 @@ if (cluster.isPrimary) {
 		cluster.fork();
 	});
 } else {
-	const server = Fastify();
+	const server = Fastify({ ignoreTrailingSlash: true });
 
 	const start = async () => {
 		try {
