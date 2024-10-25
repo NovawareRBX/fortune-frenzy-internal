@@ -1,6 +1,7 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
 import { Endpoint } from "../types/Endpoints";
 import { registerRoutes } from "../utilities/routeHandler";
+
 import user from "../endpoints/users/user";
 import user_inventory from "../endpoints/users/user_inventory";
 import add_cash from "../endpoints/users/add_cash";
@@ -8,9 +9,9 @@ import get_cash_changes from "../endpoints/users/get_cash_changes";
 
 const endpoints: Endpoint[] = [
 	{
-		method: "GET",
+		method: "POST",
 		url: "/users/:id",
-		authType: "none",
+		authType: "server_key",
 		callback: async (request: FastifyRequest<{ Params: { id: string } }>) => {
 			return await user(request);
 		},

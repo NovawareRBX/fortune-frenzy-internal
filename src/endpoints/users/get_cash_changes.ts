@@ -8,6 +8,10 @@ interface CashChangeRequest {
 
 export default async function handleRequest(request: FastifyRequest): Promise<[number, any]> {
 	const connection = await getMariaConnection();
+	if (!connection) {
+		return [500, { error: "Failed to connect to the database" }];
+	}
+
 	try {
 		const userIdsHeader = request.headers["user-ids"] as string;
 		if (!userIdsHeader) {
@@ -18,13 +22,15 @@ export default async function handleRequest(request: FastifyRequest): Promise<[n
 		if (!userIds.length) {
 			return [400, { error: "No user-ids found in header" }];
 		}
-
+	
+		await connection.beginTransaction();
 		const rows = await connection.query<CashChangeRequest[]>(
-			`SELECT user_id, amount FROM external_cash_change_requests WHERE status = 'pending' AND user_id IN (?)`,
+			`SELECT user_id, amount FROM external_cash_change_requests WHERE status = 'pending' AND user_id IN (?) FOR UPDATE`,
 			[userIds.map((id) => Number(id))],
 		);
 
 		if (rows.length === 0) {
+			await connection.rollback();
 			return [200, { status: "OK", changes: [] }];
 		}
 
@@ -39,9 +45,12 @@ export default async function handleRequest(request: FastifyRequest): Promise<[n
 			[userIdsToUpdate],
 		);
 
+		await connection.commit();
+
 		return [200, { status: "OK", changes }];
 	} catch (error) {
 		console.error("Error fetching or updating external cash change requests:", error);
+		await connection.rollback();
 		return [500, { error: "Internal Server Error" }];
 	} finally {
 		await connection.release();

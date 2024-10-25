@@ -8,6 +8,10 @@ export default async function (request: FastifyRequest<{ Params: { server_id: st
 	const maria = await getMariaConnection();
 	const redis = await getRedisConnection();
 
+	if (!maria || !redis) {
+		return [500, { error: "Failed to connect to the database" }];
+	}
+
 	await maria.query("INSERT INTO active_roblox_servers (id) VALUES (?)", [server_id]);
 
 	const initial_api_key = randomBytes(32).toString("hex");

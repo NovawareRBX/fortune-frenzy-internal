@@ -5,6 +5,10 @@ export default async function (
 	request: FastifyRequest<{ Params: { id: string } }>,
 ): Promise<[number, any]> {
 	const connection = await getMariaConnection();
+	if (!connection) {
+		return [500, { error: "Failed to connect to the database" }];
+	}
+
 	try {
 		const item_id = request.params.id;
 

@@ -1,6 +1,7 @@
 import { FastifyInstance, RouteOptions, FastifyRequest, FastifyReply, RequestPayload } from "fastify";
 import { Endpoint } from "../types/Endpoints";
 import { registerRoutes } from "../utilities/routeHandler";
+
 import root from "../endpoints/index/root";
 import packet from "../endpoints/index/packet";
 import register_server from "../endpoints/index/register_server";

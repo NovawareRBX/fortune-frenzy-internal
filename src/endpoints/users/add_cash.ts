@@ -3,6 +3,10 @@ import { getMariaConnection } from "../../service/mariadb";
 
 export default async function (request: FastifyRequest<{ Params: { id: string } }>): Promise<[number, any]> {
 	const connection = await getMariaConnection();
+	if (!connection) {
+		return [500, { error: "Failed to connect to the database" }];
+	}
+
 	try {
 		const amount = parseInt(request.headers.amount as string);
 		const id = request.params.id;
