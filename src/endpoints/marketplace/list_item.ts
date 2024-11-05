@@ -24,7 +24,7 @@ export default async function handleRequest(
 		if (typeof user_asset_id !== "string") {
 			return [400, { error: "Invalid user_asset_id, must be a string" }];
 		}
-		if (price === null) {
+		if (price === null || price === undefined) {
 			const deleteQuery = `DELETE FROM item_listings WHERE user_asset_id = ?;`;
 			const result = await connection.query(deleteQuery, [user_asset_id]);
 

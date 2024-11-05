@@ -18,3 +18,15 @@ export interface Endpoint<Params = any, Body = any, Query = any, Headers = any> 
 		reply: FastifyReply,
 	) => Promise<[status: number, data: any]>;
 }
+
+export interface ItemListing {
+	user_asset_id: string;
+	seller_id: string;
+	currency: string;
+	created_at: string;
+	expires_at: string | Date | null;
+	price: string;
+	item_id: string;
+	username?: string;
+	displayName?: string;
+}

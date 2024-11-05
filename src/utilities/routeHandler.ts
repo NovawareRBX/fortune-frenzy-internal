@@ -10,10 +10,15 @@ export async function registerRoutes(fastify: FastifyInstance, endpoints: Endpoi
 			method: endpoint.method,
 			url: endpoint.url,
 			handler: async (request: FastifyRequest, reply: FastifyReply) => {
+				const start_time = Date.now();
+
 				const [statusCode, response] = await endpoint.callback(
 					request as FastifyRequest<{ Params: any; Body: any }>,
 					reply,
 				);
+
+				console.log(`[API] ${endpoint.method} ${endpoint.url} - ${Date.now() - start_time}ms`);
+
 				reply.code(statusCode).send(response);
 			},
 		};

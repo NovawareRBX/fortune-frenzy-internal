@@ -1,40 +1,31 @@
 import { FastifyRequest } from "fastify";
 import { getMariaConnection } from "../../service/mariadb";
+import { ItemListing } from "../../types/Endpoints";
 
-export default async function (request: FastifyRequest<{ Params?: { id: string } }>): Promise<[number, any]> {
+function convertBigIntToString(obj: Record<string, any>): Record<string, any> {
+	Object.keys(obj).forEach((key) => {
+		if (typeof obj[key] === "bigint") {
+			obj[key] = obj[key].toString();
+		}
+	});
+	return obj;
+}
+
+export default async function (request: FastifyRequest<{ Params: { id?: string } }>): Promise<[number, any]> {
 	const connection = await getMariaConnection();
 	if (!connection) {
 		return [500, { error: "Failed to connect to the database" }];
 	}
 
 	try {
-		if (!request.params || !request.params.id) {
-			const rows = await connection.query(
-				"SELECT * FROM item_listings WHERE expires_at > NOW() OR expires_at IS NULL;",
-			);
+		const query = request.params?.id
+			? "SELECT il.*, u.name AS username, u.displayName FROM item_listings il LEFT JOIN users u ON il.seller_id = u.user_id WHERE il.item_id = ? AND (il.expires_at > NOW() OR il.expires_at IS NULL);"
+			: "SELECT il.*, u.name AS username, u.displayName FROM item_listings il LEFT JOIN users u ON il.seller_id = u.user_id WHERE il.expires_at > NOW() OR il.expires_at IS NULL;";
 
-			const result = rows.map((row: any) => {
-				Object.keys(row).forEach((key) => typeof row[key] === "bigint" && (row[key] = row[key].toString()));
-				return row;
-			});
+		const rows = await connection.query(query, request.params?.id ? [request.params.id] : []);
+		const listings: ItemListing[] = rows.map((row: any) => convertBigIntToString(row));
 
-			return [200, { status: "OK", listings: result }];
-		}
-
-		if (isNaN(parseInt(request.params.id))) {
-			return [400, { error: "Invalid item id" }];
-		}
-
-		const rows = await connection.query(
-			"SELECT * FROM item_listings WHERE item_id = ? AND (expires_at > NOW() OR expires_at IS NULL);",
-			[request.params.id],
-		);
-        const result = rows.map((row: any) => {
-			Object.keys(row).forEach((key) => typeof row[key] === "bigint" && (row[key] = row[key].toString()));
-			return row;
-		});
-
-		return [200, { status: "OK", listings: result }];
+		return [200, { status: "OK", listings }];
 	} catch (error) {
 		console.error("Error fetching items:", error);
 		return [500, { error: "Internal Server Error" }];

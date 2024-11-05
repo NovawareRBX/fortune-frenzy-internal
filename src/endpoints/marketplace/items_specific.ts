@@ -12,7 +12,9 @@ export default async function (
 	try {
 		const item_id = request.params.id;
 
+		console.time("Query");
 		const rows = await connection.query("SELECT * FROM items WHERE id = ?", [item_id]);
+		console.timeEnd("Query");
 
 		if (rows.length === 0) {
 			return [404, { error: "Item not found" }];

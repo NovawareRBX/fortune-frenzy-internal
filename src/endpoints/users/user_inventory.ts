@@ -12,12 +12,12 @@ export default async function (request: FastifyRequest<{ Params: { id: string } 
 		await connection.query("INSERT IGNORE INTO users (user_id) VALUES (?)", [user_id]);
 
 		const rows = await connection.query(
-			"SELECT item_id, user_asset_id, serial_number FROM item_copies WHERE owner_id = ?",
+			"SELECT copy_id, item_id, user_asset_id, serial_number FROM item_copies WHERE owner_id = ?",
 			[user_id],
 		);
 		const result = rows.map((row: any) => {
 			Object.keys(row).forEach((key) => typeof row[key] === "bigint" && (row[key] = row[key].toString()));
-			return [row.item_id, row.user_asset_id, row.serial_number.toString()];
+			return [row.item_id, row.user_asset_id, row.serial_number.toString(), row.copy_id.toString()];
 		});
 
 		return [
