@@ -1,13 +1,8 @@
 import { FastifyRequest } from "fastify";
 import { getMariaConnection } from "../../service/mariadb";
 
-interface Body {
-	price: number | null;
-	expiry?: number;
-}
-
 export default async function handleRequest(
-	request: FastifyRequest<{ Params: { uaid: string } }>,
+	request: FastifyRequest<{ Params: { uaid: string }; Body: { price?: number; expiry?: number } }>,
 ): Promise<[number, any]> {
 	const connection = await getMariaConnection();
 	if (!connection) {
@@ -15,7 +10,7 @@ export default async function handleRequest(
 	}
 
 	try {
-		const { price, expiry } = request.body as Body;
+		const { price, expiry } = request.body;
 		const user_asset_id = request.params.uaid;
 
 		if (!user_asset_id) {
@@ -45,7 +40,7 @@ export default async function handleRequest(
 			if (typeof expiry !== "number" || expiry <= currentTime) {
 				return [400, { error: "Invalid expiry, must be undefined or a future timestamp" }];
 			}
-			expiryTimestamp = new Date(expiry * 1000)
+			expiryTimestamp = new Date(expiry * 1000);
 		}
 
 		const query = `INSERT INTO item_listings (user_asset_id, currency, expires_at, price) 

@@ -30,3 +30,17 @@ export interface ItemListing {
 	username?: string;
 	displayName?: string;
 }
+
+export interface ItemCase {
+	id: string;
+	next_rotation: Date;
+	items: {
+		id: string;
+		chance: number;
+	}[];
+	ui_data: {
+		primary: string;
+		secondary: string;
+		colour: string;
+	};
+}

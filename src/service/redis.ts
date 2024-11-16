@@ -4,10 +4,9 @@ let client: RedisClientType;
 
 async function initialize(): Promise<void> {
 	client = createClient({
-		url: "redis://172.18.0.2:6379",
 		password: process.env.REDIS_PASSWORD,
 		socket: {
-			host: "172.18.0.2",
+			host: "Redis",
 			port: 6379,
 			tls: false,
 		},

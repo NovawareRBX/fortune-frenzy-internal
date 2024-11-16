@@ -1,5 +1,6 @@
 import { FastifyRequest } from "fastify";
 import { getMariaConnection } from "../../service/mariadb";
+import smartQuery from "../../utilities/smartQuery";
 
 interface CashChangeRequest {
 	user_id: bigint;
@@ -22,9 +23,10 @@ export default async function handleRequest(request: FastifyRequest): Promise<[n
 		if (!userIds.length) {
 			return [400, { error: "No user-ids found in header" }];
 		}
-	
+
 		await connection.beginTransaction();
-		const rows = await connection.query<CashChangeRequest[]>(
+		const rows = await smartQuery<CashChangeRequest[]>(
+			connection,
 			`SELECT user_id, amount FROM external_cash_change_requests WHERE status = 'pending' AND user_id IN (?) FOR UPDATE`,
 			[userIds.map((id) => Number(id))],
 		);
@@ -35,14 +37,13 @@ export default async function handleRequest(request: FastifyRequest): Promise<[n
 		}
 
 		const changes = rows.map((row) => ({
-			user_id: row.user_id.toString(),
-			amount: row.amount.toString(),
+			user_id: row.user_id,
+			amount: row.amount,
 		}));
 
-		const userIdsToUpdate = rows.map((row) => row.user_id.toString());
 		await connection.query(
 			`UPDATE external_cash_change_requests SET status = 'processed', processed_at = CURRENT_TIMESTAMP WHERE user_id IN (?) AND status = 'pending'`,
-			[userIdsToUpdate],
+			[rows.map((row) => row.user_id.toString())],
 		);
 
 		await connection.commit();

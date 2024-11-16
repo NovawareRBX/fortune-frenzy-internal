@@ -1,5 +1,6 @@
 import { FastifyReply, FastifyRequest } from "fastify";
 import { getMariaConnection } from "../../service/mariadb";
+import smartQuery from "../../utilities/smartQuery";
 
 export default async function (request: FastifyRequest<{ Params: { id: string } }>): Promise<[number, any]> {
 	const connection = await getMariaConnection();
@@ -11,20 +12,17 @@ export default async function (request: FastifyRequest<{ Params: { id: string } 
 		const user_id = request.params.id;
 		await connection.query("INSERT IGNORE INTO users (user_id) VALUES (?)", [user_id]);
 
-		const rows = await connection.query(
+		const rows = await smartQuery(
+			connection,
 			"SELECT copy_id, item_id, user_asset_id, serial_number FROM item_copies WHERE owner_id = ?",
 			[user_id],
 		);
-		const result = rows.map((row: any) => {
-			Object.keys(row).forEach((key) => typeof row[key] === "bigint" && (row[key] = row[key].toString()));
-			return [row.item_id, row.user_asset_id, row.serial_number.toString(), row.copy_id.toString()];
-		});
 
 		return [
 			200,
 			{
 				status: "OK",
-				inventory: result,
+				inventory: rows,
 			},
 		];
 	} catch (error) {

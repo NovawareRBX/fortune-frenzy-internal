@@ -8,6 +8,7 @@ dotenv.config();
 import indexRoute from "./routes/index";
 import userRoutes from "./routes/users";
 import marketplaceRoutes from "./routes/marketplace";
+import casesRoutes from "./routes/cases";
 
 const numCPUs = cpus().length;
 if (cluster.isPrimary) {
@@ -29,6 +30,7 @@ if (cluster.isPrimary) {
 			await server.register(indexRoute);
 			await server.register(userRoutes);
 			await server.register(marketplaceRoutes);
+			await server.register(casesRoutes);
 
 			await server.listen({ port: 3000, host: "0.0.0.0" });
 

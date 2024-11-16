@@ -1,5 +1,6 @@
 import { FastifyRequest } from "fastify";
 import { getMariaConnection } from "../../service/mariadb";
+import smartQuery from "../../utilities/smartQuery";
 
 function convertBigIntToString(obj: Record<string, any>): Record<string, any> {
 	Object.keys(obj).forEach((key) => {
@@ -17,10 +18,11 @@ export default async function (request: FastifyRequest<{ Params: { id: string } 
 	}
 
 	try {
-		const query = "SELECT i.*, u.name AS username, u.displayName FROM item_copies i LEFT JOIN users u ON i.owner_id = u.user_id WHERE i.item_id = ?;";
-
-		const rows = await connection.query(query, [request.params.id]);
-		const owners = rows.map((row: any) => convertBigIntToString(row));
+		const owners = await smartQuery(
+			connection,
+			"SELECT i.*, u.name AS username, u.displayName FROM item_copies i LEFT JOIN users u ON i.owner_id = u.user_id WHERE i.item_id = ?;",
+			[request.params.id],
+		);
 
 		return [200, { status: "OK", owners }];
 	} catch (error) {

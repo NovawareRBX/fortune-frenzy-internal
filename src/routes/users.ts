@@ -12,7 +12,7 @@ const endpoints: Endpoint[] = [
 		method: "POST",
 		url: "/users/:id",
 		authType: "server_key",
-		callback: async (request: FastifyRequest<{ Params: { id: string } }>) => {
+		callback: async (request: FastifyRequest<{ Params: { id: string }; Body: { name?: string; displayName?: string } }>) => {
 			return await user(request);
 		},
 	},

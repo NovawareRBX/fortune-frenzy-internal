@@ -1,6 +1,7 @@
 import { FastifyRequest } from "fastify";
 import { getMariaConnection } from "../../service/mariadb";
 import { ItemListing } from "../../types/Endpoints";
+import smartQuery from "../../utilities/smartQuery";
 
 interface Body {
 	buyer_id: string;
@@ -12,21 +13,21 @@ export default async function (request: FastifyRequest<{ Params: { id: string } 
 		return [500, { error: "Failed to connect to the database" }];
 	}
 
-	const body = request.body as Body;
-	const { id } = request.params;
-
-	if (!body) {
-		return [400, { error: "Missing body" }];
-	}
-
-	const buyerId = Number(body.buyer_id);
-
-	if (!buyerId || isNaN(buyerId)) {
-		return [400, { error: "Invalid buyer_id" }];
-	}
-
 	try {
-		const [item] = await connection.query(`SELECT * FROM items WHERE id = ?;`, [id]);
+		const body = request.body as Body;
+		const { id } = request.params;
+
+		if (!body) {
+			return [400, { error: "Missing body" }];
+		}
+
+		const buyerId = Number(body.buyer_id);
+
+		if (!buyerId || isNaN(buyerId)) {
+			return [400, { error: "Invalid buyer_id" }];
+		}
+
+		const [item] = await smartQuery(connection, `SELECT * FROM items WHERE id = ?;`, [id]);
 
 		if (!item) {
 			return [404, { error: "Item not found" }];
@@ -63,16 +64,7 @@ export default async function (request: FastifyRequest<{ Params: { id: string } 
 			return [500, { error: "Failed to buy item" }];
 		}
 
-		const [newItem] = await connection.query(
-			`
-			SELECT * FROM items WHERE id = ?;
-		`,
-			[id],
-		);
-		Object.keys(newItem).forEach(
-			(key) => typeof newItem[key] === "bigint" && (newItem[key] = newItem[key].toString()),
-		);
-
+		const [newItem] = await smartQuery(connection, `SELECT * FROM items WHERE id = ?;`, [id]);
 		return [200, { success: true, item: newItem }];
 	} catch (error) {
 		console.error(error);

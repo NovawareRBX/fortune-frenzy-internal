@@ -1,5 +1,6 @@
 import { FastifyReply, FastifyRequest } from "fastify";
 import { getMariaConnection } from "../../service/mariadb";
+import smartQuery from "../../utilities/smartQuery";
 
 export default async function (): Promise<[number, any]> {
 	const connection = await getMariaConnection();
@@ -8,13 +9,8 @@ export default async function (): Promise<[number, any]> {
 	}
 
 	try {
-		const rows = await connection.query("SELECT * FROM items");
-		const result = rows.map((row: any) => {
-			Object.keys(row).forEach((key) => typeof row[key] === "bigint" && (row[key] = row[key].toString()));
-			return row;
-		});
-
-		return [200, { status: "OK", data: result }];
+		const rows = await smartQuery(connection, "SELECT * FROM items");
+		return [200, { status: "OK", data: rows }];
 	} catch (error) {
 		console.error("Error fetching items:", error);
 		return [500, { error: "Internal Server Error" }];

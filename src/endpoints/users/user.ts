@@ -1,19 +1,17 @@
 import { FastifyReply, FastifyRequest } from "fastify";
 import { getMariaConnection } from "../../service/mariadb";
+import smartQuery from "../../utilities/smartQuery";
 
-interface Body {
-	name: string;
-	displayName: string;
-}
-
-export default async function (request: FastifyRequest<{ Params: { id: string } }>): Promise<[number, any]> {
+export default async function (
+	request: FastifyRequest<{ Params: { id: string }; Body: { name?: string; displayName?: string } }>,
+): Promise<[number, any]> {
 	const connection = await getMariaConnection();
 	if (!connection) {
 		return [500, { error: "Failed to connect to the database" }];
 	}
 
 	try {
-		const { name = "Unknown", displayName = "Unknown" } = request.body as Body;
+		const { name = "Unknown", displayName = "Unknown" } = request.body;
 		const user_id = request.params.id;
 
 		if (typeof name !== "string" || name.trim() === "") {
@@ -39,10 +37,7 @@ export default async function (request: FastifyRequest<{ Params: { id: string } 
 			[user_id, name, displayName],
 		);
 
-		const rows = await connection.query("SELECT * FROM users WHERE user_id = ?", [user_id]);
-		const result = rows[0];
-
-		Object.keys(result).forEach((key) => typeof result[key] === "bigint" && (result[key] = result[key].toString()));
+		const [result] = await smartQuery(connection, "SELECT * FROM users WHERE user_id = ?", [user_id]);
 
 		return [
 			200,

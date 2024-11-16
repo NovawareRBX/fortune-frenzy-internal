@@ -1,9 +1,8 @@
 import { FastifyReply, FastifyRequest } from "fastify";
 import { getMariaConnection } from "../../service/mariadb";
+import smartQuery from "../../utilities/smartQuery";
 
-export default async function (
-	request: FastifyRequest<{ Params: { id: string } }>,
-): Promise<[number, any]> {
+export default async function (request: FastifyRequest<{ Params: { id: string } }>): Promise<[number, any]> {
 	const connection = await getMariaConnection();
 	if (!connection) {
 		return [500, { error: "Failed to connect to the database" }];
@@ -11,17 +10,11 @@ export default async function (
 
 	try {
 		const item_id = request.params.id;
+		const [result] = await smartQuery(connection, "SELECT * FROM items WHERE id = ?", [item_id]);
 
-		console.time("Query");
-		const rows = await connection.query("SELECT * FROM items WHERE id = ?", [item_id]);
-		console.timeEnd("Query");
-
-		if (rows.length === 0) {
+		if (!result) {
 			return [404, { error: "Item not found" }];
 		}
-
-		const result = rows[0];
-		Object.keys(result).forEach((key) => typeof result[key] === "bigint" && (result[key] = result[key].toString()));
 
 		return [
 			200,

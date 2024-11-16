@@ -1,45 +1,44 @@
 import { FastifyRequest } from "fastify";
 import { getMariaConnection } from "../../service/mariadb";
 import { ItemListing } from "../../types/Endpoints";
-
-interface Body {
-	buyer_id: string;
-}
+import smartQuery from "../../utilities/smartQuery";
 
 export default async function (
-	request: FastifyRequest<{ Params: { uaid: string } }>,
+	request: FastifyRequest<{ Params: { uaid: string }; Body: { buyer_id?: string } }>,
 ): Promise<[number, any]> {
 	const connection = await getMariaConnection();
 	if (!connection) {
 		return [500, { error: "Failed to connect to the database" }];
 	}
 
-    const body = request.body as Body;
-	const { uaid } = request.params;
-
-    if (!body) {
-        return [400, { error: "Missing body" }];
-    }
-
-	const buyerId = Number(body.buyer_id);
-
-	if (!buyerId || isNaN(buyerId)) {
-		return [400, { error: "Invalid buyer_id" }];
-	}
-
 	try {
-        await connection.beginTransaction();
-		const [listing] = await connection.query<ItemListing[]>("SELECT * FROM item_listings WHERE user_asset_id = ? FOR UPDATE", [
-			uaid,
-		]);
+		const body = request.body;
+		const { uaid } = request.params;
+
+		if (!body) {
+			return [400, { error: "Missing body" }];
+		}
+
+		const buyerId = Number(body.buyer_id);
+
+		if (!buyerId || isNaN(buyerId)) {
+			return [400, { error: "Invalid buyer_id" }];
+		}
+
+		await connection.beginTransaction();
+		const [listing] = await smartQuery<ItemListing[]>(
+			connection,
+			"SELECT * FROM item_listings WHERE user_asset_id = ? FOR UPDATE",
+			[uaid],
+		);
 
 		if (!listing) {
-            await connection.rollback();
+			await connection.rollback();
 			return [404, { error: "Listing not found" }];
 		}
 
 		if (listing.expires_at && new Date(listing.expires_at) < new Date()) {
-            await connection.rollback();
+			await connection.rollback();
 			return [400, { error: "Listing has expired" }];
 		}
 
@@ -54,7 +53,6 @@ export default async function (
 		return [200, { success: true }];
 	} catch (error) {
 		await connection.rollback();
-		console.error(`Error processing purchase for uaid ${uaid} by buyer ${buyerId}:`, error);
 		return [500, { status: "ERROR" }];
 	} finally {
 		connection.release();
