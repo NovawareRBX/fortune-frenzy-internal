@@ -1,20 +1,31 @@
 import { PoolConnection } from "mariadb";
 
-export default async function <T = any>(connection: PoolConnection, query: string, params?: any[]): Promise<T> {
-	const result = connection.query(query, params) as Promise<any[]>;
+interface QueryOptions {
+	parseJson?: boolean;
+	stringifyBigInt?: boolean;
+}
+
+export default async function query<T = any>(
+	connection: PoolConnection,
+	query: string,
+	params?: any[],
+	options: QueryOptions = { parseJson: true, stringifyBigInt: true },
+): Promise<T> {
+	const result: Promise<any[]> = connection.query(query, params);
 
 	return result.then((rows: any[]) => {
+		console.log(rows);
+
 		return rows.map((row) => {
-			for (const key in row) {
-				if (typeof row[key] === "bigint") {
-					row[key] = row[key].toString();
-				} else if (typeof row[key] === "string") {
+			for (const [key, value] of Object.entries(row)) {
+				if (options.stringifyBigInt && typeof value === "bigint") {
+					row[key] = value.toString();
+				} else if (options.parseJson && typeof value === "string" && isNaN(Number(value))) {
 					try {
-						row[key] = JSON.parse(row[key]);
-					} catch (e) {}
+						row[key] = JSON.parse(value);
+					} catch {}
 				}
 			}
-
 			return row;
 		});
 	}) as T;

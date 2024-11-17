@@ -22,7 +22,12 @@ export default async function (request: FastifyRequest<{ Params: { id: string } 
 			200,
 			{
 				status: "OK",
-				inventory: rows,
+				inventory: rows.map((row: any) => [
+					row.item_id,
+					row.user_asset_id,
+					String(row.serial_number),
+					row.copy_id,
+				]),
 			},
 		];
 	} catch (error) {
