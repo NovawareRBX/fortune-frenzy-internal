@@ -1,1 +1,1 @@
-theres nothing to read, figure out how to compile this yourself!
+Open sourcing this so I have something to show off. 💞
