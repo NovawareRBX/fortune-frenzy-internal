@@ -32,11 +32,13 @@ export interface ItemListing {
 }
 
 export interface ItemCase {
+	price: number;
 	id: string;
 	next_rotation: Date;
 	items: {
 		id: string;
 		chance: number;
+		claimed: number;
 	}[];
 	ui_data: {
 		primary: string;

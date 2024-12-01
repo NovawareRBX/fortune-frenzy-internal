@@ -1,6 +1,6 @@
 import { getRandomValues } from "crypto";
 
-export type Entry = { id: string; chance: number };
+export type Entry = { id: string; chance: number; claimed: number };
 
 export default function (entries: Entry[]): Entry {
 	const totalChance = entries.reduce((sum, entry) => sum + entry.chance, 0);
