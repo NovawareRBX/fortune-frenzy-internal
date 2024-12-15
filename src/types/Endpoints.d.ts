@@ -45,4 +45,5 @@ export interface ItemCase {
 		secondary: string;
 		colour: string;
 	};
+	opened_count: number;
 }

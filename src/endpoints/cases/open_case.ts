@@ -40,6 +40,14 @@ export default async function (
 		await connection.beginTransaction();
 		await connection.query("UPDATE items SET total_unboxed = total_unboxed + 1 WHERE id = ?", [item_id]);
 		await connection.query("INSERT INTO item_copies (item_id, owner_id) VALUES (?, ?)", [item_id, user_id]);
+
+		const targetItem = item_case.items.find((item) => item.id === item_id);
+		if (targetItem) {
+			targetItem.claimed += 1;
+		}
+		const updatedItemsJSON = JSON.stringify(item_case.items);
+		await connection.query("UPDATE cases SET items = ?, opened_count = opened_count + 1 WHERE id = ?", [updatedItemsJSON, id]);
+
 		await connection.commit();
 
 		return [
@@ -47,6 +55,14 @@ export default async function (
 			{
 				status: "OK",
 				result: entry,
+				case: {
+					id: item_case.id,
+					price: item_case.price,
+					ui_data: item_case.ui_data,
+					items: item_case.items,
+					next_rotation: item_case.next_rotation,
+					opened_count: item_case.opened_count,
+				},
 			},
 		];
 	} catch (error) {

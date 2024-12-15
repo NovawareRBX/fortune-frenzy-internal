@@ -21,8 +21,8 @@ const UI_DATA = [
 ];
 
 const ITEMS_PER_CASE = 10;
-const MIN_PROFIT_CHANCE = 0.25;
-const MAX_PROFIT_CHANCE = 0.35;
+const MIN_PROFIT_CHANCE = 0.45;
+const MAX_PROFIT_CHANCE = 0.51;
 
 function selectCaseItems(
 	validItems: { id: string; value: number }[],

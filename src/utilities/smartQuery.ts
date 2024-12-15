@@ -1,3 +1,4 @@
+import { isArray } from "lodash";
 import { PoolConnection } from "mariadb";
 
 interface QueryOptions {
@@ -14,7 +15,9 @@ export default async function query<T = any>(
 	const result: Promise<any[]> = connection.query(query, params);
 
 	return result.then((rows: any[]) => {
-		console.log(rows);
+		if (!isArray(rows)) {
+			return rows;
+		}
 
 		return rows.map((row) => {
 			for (const [key, value] of Object.entries(row)) {

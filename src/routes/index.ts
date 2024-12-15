@@ -5,6 +5,7 @@ import { registerRoutes } from "../utilities/routeHandler";
 import root from "../endpoints/index/root";
 import packet from "../endpoints/index/packet";
 import register_server from "../endpoints/index/register_server";
+import settings from "../endpoints/index/settings";
 
 const endpoints: Endpoint[] = [
 	{
@@ -29,6 +30,14 @@ const endpoints: Endpoint[] = [
 		authType: "master_key",
 		callback: async (request: FastifyRequest<{ Params: { server_id: string } }>) => {
 			return await register_server(request);
+		},
+	},
+	{
+		method: "GET",
+		url: "/settings/:game_id",
+		authType: "none",
+		callback: async (request: FastifyRequest<{ Params: { game_id: string } }>) => {
+			return await settings(request);
 		},
 	},
 ];

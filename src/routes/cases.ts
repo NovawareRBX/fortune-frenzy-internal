@@ -17,7 +17,7 @@ const endpoints: Endpoint[] = [
 	{
 		method: "POST",
 		url: "/cases/open/:id",
-		authType: "none",
+		authType: "server_key",
 		callback: async (request: FastifyRequest<{ Params: { id: string }; Body: { user_id: string } }>) => {
 			return await open_case(request);
 		},
