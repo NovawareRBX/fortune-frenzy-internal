@@ -130,7 +130,7 @@ export default async function regenerate_cases(): Promise<[number, any]> {
 			const case_items = calculateItemChances(items, case_data.price);
 			const ui_data = selectUnusedUIData(used_ui_data_indices);
 
-			await connection.query("UPDATE cases SET items = ?, ui_data = ?, next_rotation = ? WHERE id = ?", [
+			await connection.query("UPDATE cases SET items = ?, ui_data = ?, next_rotation = ?, opened_count = 0 WHERE id = ?", [
 				JSON.stringify(case_items),
 				JSON.stringify(ui_data),
 				new Date(Date.now() + 1000 * 60 * 60 * 24 * 3),

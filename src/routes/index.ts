@@ -39,7 +39,7 @@ const endpoints: Endpoint[] = [
 		callback: async (request: FastifyRequest<{ Params: { game_id: string } }>) => {
 			return await settings(request);
 		},
-	},
+	}
 ];
 
 async function indexRoutes(fastify: FastifyInstance) {
