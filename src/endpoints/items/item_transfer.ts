@@ -38,9 +38,20 @@ export default async function (
 		if (items.length === 0) {
 			return [400, { error: "Invalid request" }];
 		}
-		
-		await query(connection, "INSERT INTO item_transfers (transfer_id) VALUES (?)", [transfer_id]);
 
+		const [data] = await query(
+			connection,
+			`SELECT item_uaid, owner_id FROM item_copies WHERE (item_uaid, owner_id) IN (${items
+				.map(() => "(?, ?)")
+				.join(", ")})`,
+			items.flatMap((item) => [item[2], item[1]]),
+		);
+
+		if (data.length !== items.length) {
+			return [400, { error: "Invalid request" }];
+		}
+
+		await query(connection, "INSERT INTO item_transfers (transfer_id) VALUES (?)", [transfer_id]);
 		const placeholders = items.map(() => "(?, ?, ?)").join(", ");
 		const values = items.flat();
 
