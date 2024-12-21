@@ -44,7 +44,7 @@ export default async function (
 
 		const coinflip = await query(
 			connection,
-			`SELECT * FROM coinflips WHERE id = ? AND status = "waiting_for_player"`,
+			`SELECT * FROM coinflips WHERE id = ? AND status = "waiting_for_players" FOR UPDATE`,
 			[coinflip_id],
 		);
 		if (coinflip.length === 0) {

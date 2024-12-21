@@ -31,9 +31,11 @@ export default async function (
 
 		const transfer_id = request.params.transfer_id;
 		const user_id = request.body.user_id;
+		await connection.beginTransaction();
 
 		const [transfer] = await query(connection, "SELECT * FROM item_transfers WHERE transfer_id = ?", [transfer_id]);
 		if (!transfer) {
+			await connection.rollback();
 			return [404, { error: "Transfer not found" }];
 		}
 
@@ -47,6 +49,7 @@ export default async function (
 		>(connection, "SELECT * FROM item_transfer_items WHERE transfer_id = ?", [transfer_id]);
 		if (items.length === 0) {
 			await query(connection, "DELETE FROM item_transfers WHERE transfer_id = ?", [transfer_id]);
+			await connection.commit();
 			return [404, { error: "No items in transfer" }];
 		}
 
@@ -60,7 +63,7 @@ export default async function (
 			connection,
 			`SELECT owner_id, user_asset_id FROM item_copies WHERE (owner_id, user_asset_id) IN (${userasset_pairs
 				.map(() => "(?, ?)")
-				.join(", ")})`,
+				.join(", ")}) FOR UPDATE NOWAIT`,
 			userasset_pairs.flat(),
 		);
 
@@ -68,6 +71,7 @@ export default async function (
 		for (const item of items) {
 			if (!owned_set.has(`${item.user_id}_${item.item_uaid}`)) {
 				await query(connection, "DELETE FROM item_transfers WHERE transfer_id = ?", [transfer_id]);
+				await connection.commit();
 				return [403, { error: "Item not owned by user" }];
 			}
 		}
@@ -79,9 +83,10 @@ export default async function (
 		);
 
 		await query(connection, "UPDATE item_transfers SET status = 'confirmed' WHERE transfer_id = ?", [transfer_id]);
+		await connection.commit();
 		return [200, { status: "OK" }];
 	} catch (error) {
-		console.error("item_transfer", error);
+		await connection.rollback();
 		return [500, { error: "Failed to create transfer" }];
 	} finally {
 		connection.release();

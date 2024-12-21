@@ -39,7 +39,7 @@ export default async function (
 			return [400, { error: "Invalid request" }];
 		}
 
-		const [data] = await query(
+		const data = await query(
 			connection,
 			`SELECT user_asset_id, owner_id FROM item_copies WHERE (user_asset_id, owner_id) IN (${items
 				.map(() => "(?, ?)")

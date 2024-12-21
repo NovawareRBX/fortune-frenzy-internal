@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from "crypto";
 
-export default async function (userId1: string, userId2: string) {
+export default function (userId1: string, userId2: string) {
     const server_seed = process.env.SERVER_RANDOMNESS_SEED!;
     const server_seed_hash = createHash("sha256").update(server_seed).digest("hex");
     const nonce = randomBytes(16).toString("hex");

@@ -4,6 +4,7 @@ import { registerRoutes } from "../utilities/routeHandler";
 import create from "../endpoints/coinflip/create";
 import join from "../endpoints/coinflip/join";
 import get_coinflips from "../endpoints/coinflip/get_coinflips";
+import start from "../endpoints/coinflip/start";
 
 const endpoints: Endpoint[] = [
 	{
@@ -30,6 +31,18 @@ const endpoints: Endpoint[] = [
 			}>,
 		) => {
 			return await join(request);
+		},
+	},
+	{
+		method: "POST",
+		url: "/coinflip/start/:coinflip_id",
+		authType: "none",
+		callback: async (
+			request: FastifyRequest<{
+				Params: { coinflip_id: string };
+			}>,
+		) => {
+			return await start(request);
 		},
 	},
 	{
