@@ -2,6 +2,7 @@ import { FastifyRequest } from "fastify";
 import { getMariaConnection } from "../../service/mariadb";
 import query from "../../utilities/smartQuery";
 import { randomBytes } from "crypto";
+import getItemString from "../../utilities/getItemString";
 
 export default async function (
 	request: FastifyRequest<{
@@ -33,10 +34,13 @@ export default async function (
 
 	try {
 		await connection.beginTransaction();
-		const coinflips = await query(connection, `SELECT * FROM coinflips WHERE player1 = ? AND status != "done"`, [
-			user_id,
-		]);
-		if (coinflips.length > 0) {
+		const active_coinflips = await query(
+			connection,
+			'SELECT * FROM coinflips WHERE (player1 = ? OR player2 = ?) AND status != "completed"',
+			[user_id, user_id],
+		);
+
+		if (active_coinflips.length > 0) {
 			await connection.rollback();
 			return [400, { error: "Active coinflip already exists" }];
 		}
@@ -58,14 +62,7 @@ export default async function (
 			[coinflip_id, user_id, items.join(","), request.body.type, server_id, coin],
 		);
 
-		const item_ids = await query<Array<{ item_id: string; user_asset_id: string }>>(
-			connection,
-			`SELECT item_id, user_asset_id FROM item_copies WHERE user_asset_id IN (?)`,
-			[items],
-		);
-		const item_ids_string = item_ids
-			.map((item: { item_id: string; user_asset_id: string }) => `${item.user_asset_id}:${item.item_id}`)
-			.join(",");
+		const item_ids_string = getItemString(connection, items);
 
 		await connection.commit();
 		return [
@@ -78,11 +75,12 @@ export default async function (
 					player2: null,
 					player1_items: item_ids_string,
 					player2_items: null,
-					status: "waiting",
+					status: "waiting_for_player",
 					transfer_id: null,
 					type: request.body.type,
 					server_id,
 					player1_coin: coin,
+					winning_coin: null,
 				},
 			},
 		];
