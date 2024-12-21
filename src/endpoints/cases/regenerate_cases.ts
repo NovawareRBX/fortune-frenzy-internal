@@ -1,6 +1,7 @@
 import { getMariaConnection } from "../../service/mariadb";
 import { ItemCase } from "../../types/Endpoints";
 import smartQuery from "../../utilities/smartQuery";
+import { randomInt } from "crypto";
 
 const UI_DATA = [
 	{ primary: "rbxassetid://15807807517", secondary: "rbxassetid://16301287999", colour: "#8585a5" },
@@ -96,9 +97,9 @@ function calculateItemChances(
 }
 
 function selectUnusedUIData(usedUiDataIndices: number[]): { primary: string; secondary: string; colour: string } {
-	let ui_data_index = Math.floor(Math.random() * UI_DATA.length);
+	let ui_data_index = randomInt(UI_DATA.length);
 	while (usedUiDataIndices.includes(ui_data_index)) {
-		ui_data_index = Math.floor(Math.random() * UI_DATA.length);
+		ui_data_index = randomInt(UI_DATA.length);
 	}
 	usedUiDataIndices.push(ui_data_index);
 	return UI_DATA[ui_data_index];
