@@ -17,20 +17,20 @@ export default async function (
 	}
 
 	try {
-		if (!request.body || !Array.isArray(request.body) || request.body.length === 0) {
+		if (
+			!request.body ||
+			!Array.isArray(request.body) ||
+			request.body.length === 0 ||
+			!request.body.every(
+				(entry) =>
+					entry.user_id &&
+					Array.isArray(entry.items) &&
+					entry.items.length > 0 &&
+					typeof entry.user_id === "string" &&
+					entry.items.every((item) => typeof item === "string" && item.startsWith("FF")),
+			)
+		) {
 			return [400, { error: "Invalid request" }];
-		}
-
-		for (const entry of request.body) {
-			if (!entry.user_id || !entry.items || !Array.isArray(entry.items) || entry.items.length === 0) {
-				return [400, { error: "Invalid request" }];
-			}
-			if (
-				typeof entry.user_id !== "string" ||
-				!entry.items.every((item) => typeof item === "string" && item.startsWith("FF"))
-			) {
-				return [400, { error: "Invalid request" }];
-			}
 		}
 
 		const transfer_id = randomBytes(10).toString("base64").replace(/[+/=]/g, "").substring(0, 10);
@@ -41,7 +41,7 @@ export default async function (
 
 		const [data] = await query(
 			connection,
-			`SELECT item_uaid, owner_id FROM item_copies WHERE (item_uaid, owner_id) IN (${items
+			`SELECT user_asset_id, owner_id FROM item_copies WHERE (user_asset_id, owner_id) IN (${items
 				.map(() => "(?, ?)")
 				.join(", ")})`,
 			items.flatMap((item) => [item[2], item[1]]),

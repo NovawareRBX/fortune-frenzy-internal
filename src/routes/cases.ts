@@ -27,9 +27,9 @@ const endpoints: Endpoint[] = [
 		url: "/cases/regenerate",
 		authType: "none",
 		callback: async (_request: FastifyRequest) => {
-			return await regenerate_cases()
+			return await regenerate_cases();
 		},
-	}
+	},
 ];
 
 async function casesRoutes(fastify: FastifyInstance) {

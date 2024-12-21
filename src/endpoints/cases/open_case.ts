@@ -5,7 +5,7 @@ import smartQuery from "../../utilities/smartQuery";
 import { ItemCase } from "../../types/Endpoints";
 
 export default async function (
-	request: FastifyRequest<{ Params: { id: string }; Body: { user_id?: string } }>,
+	request: FastifyRequest<{ Params: { id: string }; Body: { user_id: string } }>,
 ): Promise<[number, any]> {
 	const connection = await getMariaConnection();
 	if (!connection) {
