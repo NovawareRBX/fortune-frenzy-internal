@@ -2,6 +2,7 @@ import { FastifyInstance, FastifyRequest } from "fastify";
 import { Endpoint } from "../types/Endpoints";
 import { registerRoutes } from "../utilities/routeHandler";
 import create from "../endpoints/coinflip/create";
+import join from "../endpoints/coinflip/join";
 
 const endpoints: Endpoint[] = [
 	{
@@ -15,6 +16,19 @@ const endpoints: Endpoint[] = [
             }>,
 		) => {
 			return await create(request);
+		},
+	},
+	{
+		method: "POST",
+		url: "/coinflip/join/:coinflip_id",
+		authType: "server_key",
+		callback: async (
+			request: FastifyRequest<{
+				Params: { coinflip_id: string };
+				Body: { user_id: number; items: string[] };
+			}>,
+		) => {
+			return await join(request);
 		},
 	},
 ];

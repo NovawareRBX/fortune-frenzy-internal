@@ -89,7 +89,7 @@ export default async function (
 					player2: String(user_id),
 					player1_items: player1_item_ids_string,
 					player2_items: player2_item_ids_string,
-					status: "waiting_for_player",
+					status: "awaiting_confirmation",
 					transfer_id: null,
 					type: coinflip[0].type,
 					server_id: coinflip[0].server_id,
@@ -99,6 +99,7 @@ export default async function (
 			},
 		];
 	} catch (error) {
+		console.error("Failed to join coinflip", error);
 		await connection.rollback();
 		return [500, { error: "Failed to join coinflip" }];
 	} finally {
