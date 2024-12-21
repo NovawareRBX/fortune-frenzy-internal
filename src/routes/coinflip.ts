@@ -3,6 +3,7 @@ import { Endpoint } from "../types/Endpoints";
 import { registerRoutes } from "../utilities/routeHandler";
 import create from "../endpoints/coinflip/create";
 import join from "../endpoints/coinflip/join";
+import get_coinflips from "../endpoints/coinflip/get_coinflips";
 
 const endpoints: Endpoint[] = [
 	{
@@ -11,9 +12,9 @@ const endpoints: Endpoint[] = [
 		authType: "server_key",
 		callback: async (
 			request: FastifyRequest<{
-                Params: { server_id: string };
-                Body: { user_id: Number; items: Array<string>; coin: 1 | 2; type: "server" | "global" | "friends" };
-            }>,
+				Params: { server_id: string };
+				Body: { user_id: Number; items: Array<string>; coin: 1 | 2; type: "server" | "global" | "friends" };
+			}>,
 		) => {
 			return await create(request);
 		},
@@ -29,6 +30,14 @@ const endpoints: Endpoint[] = [
 			}>,
 		) => {
 			return await join(request);
+		},
+	},
+	{
+		method: "GET",
+		url: "/coinflips",
+		authType: "none",
+		callback: async () => {
+			return await get_coinflips();
 		},
 	},
 ];

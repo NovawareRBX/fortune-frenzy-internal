@@ -9,7 +9,7 @@ function initalise(): void {
 		user: process.env.MARIADB_USER,
 		password: process.env.MARIADB_PASSWORD,
 		database: "Game1",
-		connectionLimit: 30,
+		connectionLimit: 50,
 		autoJsonMap: true,
 	});
 }
