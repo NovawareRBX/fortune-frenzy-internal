@@ -22,6 +22,10 @@ export default async function (): Promise<[number, any]> {
 			}>
 		>(connection, "SELECT * FROM coinflips WHERE status != 'completed'");
 
+		if (coinflips.length === 0) {
+			return [200, { status: "OK", coinflips: [] }];
+		}
+
 		const all_item_ids = Array.from(
 			new Set(
 				coinflips.flatMap(({ player1_items, player2_items }) => [

@@ -34,6 +34,17 @@ export default async function (
 
 	try {
 		await connection.beginTransaction();
+		// first get the total number of active coinflips globally
+		const global_coinflips = await query(
+			connection,
+			"SELECT COUNT(*) AS count FROM coinflips WHERE status != 'completed'",
+		);
+
+		if (global_coinflips[0].count >= 0) {
+			await connection.rollback();
+			return [400, { error: "Too many active coinflips" }];
+		}
+
 		const active_coinflips = await query(
 			connection,
 			'SELECT * FROM coinflips WHERE (player1 = ? OR player2 = ?) AND status != "completed"',
