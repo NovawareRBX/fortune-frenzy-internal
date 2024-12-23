@@ -2,16 +2,16 @@ import { PoolConnection } from "mariadb";
 import { getRedisConnection } from "../service/redis";
 import query from "./smartQuery";
 
-export default async function (connection: PoolConnection, uaids: string[]): Promise<Record<string, string>> {
+export default async function (connection: PoolConnection, uaids: string[]): Promise<string[]> {
 	const redis = await getRedisConnection();
 
 	const cached_results = await redis.mGet(uaids.map((id) => `itemCopy:${id}`));
-	const results: Record<string, string> = {};
+	const results: string[] = [];
 	const uncached_uaids: string[] = [];
 
 	uaids.forEach((uaid, index) => {
 		if (cached_results[index]) {
-			results[uaid] = cached_results[index];
+			results.push(cached_results[index]);
 		} else {
 			uncached_uaids.push(uaid);
 		}
@@ -27,7 +27,7 @@ export default async function (connection: PoolConnection, uaids: string[]): Pro
 		const redis_multi = redis.multi();
 		items.forEach((item) => {
 			const value = `${item.user_asset_id}:${item.item_id}`;
-			results[item.user_asset_id] = value;
+			results.push(value);
 			redis_multi.set(`itemCopy:${item.user_asset_id}`, value, { EX: 600 });
 		});
 

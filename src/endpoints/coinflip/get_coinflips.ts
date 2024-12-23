@@ -10,10 +10,26 @@ export default async function (): Promise<[number, any]> {
 	}
 
 	try {
-		const coinflips = await query(connection, "SELECT * FROM coinflips WHERE status != 'completed'");
-		let corrected_coinflips = coinflips.map(async (coinflip: any) => {
+		const coinflips = await query<
+			Array<{
+				id: string;
+				player1: string;
+				player2: string;
+				player1_items: string;
+				player2_items: string | null;
+				status: "waiting_for_players" | "awaiting_confirmation" | "completed" | "failed";
+				transfer_id: string | null;
+				type: "server" | "global" | "friends";
+				server_id: string;
+				player1_coin: 1 | 2;
+				winning_coin: 1 | 2 | null;
+			}>
+		>(connection, "SELECT * FROM coinflips WHERE status != 'completed'");
+		let corrected_coinflips = coinflips.map(async (coinflip) => {
 			const player1_item_string = await getItemString(connection, coinflip.player1_items.split(","));
-			const player2_item_string = await getItemString(connection, coinflip.player2_items.split(","));
+			const player2_item_string = coinflip.player2_items
+				? await getItemString(connection, coinflip.player2_items.split(","))
+				: null;
 
 			return {
 				...coinflip,
@@ -24,6 +40,7 @@ export default async function (): Promise<[number, any]> {
 
 		return [200, await Promise.all(corrected_coinflips)];
 	} catch (error) {
+		console.error(error);
 		return [500, { error: "Failed to get coinflips" }];
 	} finally {
 		connection.release();
