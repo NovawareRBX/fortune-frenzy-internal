@@ -84,7 +84,7 @@ export default async function (
 			{
 				status: "OK",
 				data: {
-					coinflip_id,
+					id: coinflip_id,
 					player1: coinflip[0].player1,
 					player2: String(user_id),
 					player1_items: player1_item_ids_string,

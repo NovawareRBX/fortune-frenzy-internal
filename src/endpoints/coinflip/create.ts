@@ -40,7 +40,7 @@ export default async function (
 			"SELECT COUNT(*) AS count FROM coinflips WHERE status != 'completed'",
 		);
 
-		if (global_coinflips[0].count >= 0) {
+		if (global_coinflips[0].count >= 300) {
 			await connection.rollback();
 			return [400, { error: "Too many active coinflips" }];
 		}
@@ -81,7 +81,7 @@ export default async function (
 			{
 				status: "OK",
 				data: {
-					coinflip_id,
+					id: coinflip_id,
 					player1: String(user_id),
 					player2: null,
 					player1_items: item_ids_string,
