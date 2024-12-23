@@ -53,7 +53,10 @@ export default async function (): Promise<[number, any]> {
 				: null,
 		}));
 
-		return [200, corrected_coinflips];
+		return [200, {
+			status: "OK",
+			coinflips: corrected_coinflips,
+		}];
 	} catch (error) {
 		console.error(error);
 		return [500, { error: "Failed to get coinflips" }];
