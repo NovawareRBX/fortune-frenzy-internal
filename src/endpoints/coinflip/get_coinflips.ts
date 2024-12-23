@@ -43,13 +43,13 @@ export default async function (): Promise<[number, any]> {
 			...coinflip,
 			player1_items: coinflip.player1_items
 				.split(",")
-				.map((id) => item_map.get(id))
-				.join(", "),
+				.map((id) => `${id}:${item_map.get(id)}`)
+				.join(","),
 			player2_items: coinflip.player2_items
 				? coinflip.player2_items
 						.split(",")
-						.map((id) => item_map.get(id))
-						.join(", ")
+						.map((id) => `${id}:${item_map.get(id)}`)
+						.join(",")
 				: null,
 		}));
 
