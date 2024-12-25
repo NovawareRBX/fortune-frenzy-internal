@@ -1,5 +1,6 @@
 import { getMariaConnection } from "../../service/mariadb";
 import getItemString from "../../utilities/getItemString";
+import getUserInfo from "../../utilities/getUserInfo";
 import query from "../../utilities/smartQuery";
 
 export default async function (): Promise<[number, any]> {
@@ -11,7 +12,7 @@ export default async function (): Promise<[number, any]> {
 			Array<{
 				id: string;
 				player1: string;
-				player2: string;
+				player2: string | null;
 				player1_items: string;
 				player2_items: string | null;
 				status: string;
@@ -25,6 +26,22 @@ export default async function (): Promise<[number, any]> {
 		if (coinflips.length === 0) {
 			return [200, { status: "OK", coinflips: [] }];
 		}
+
+		const all_player_ids = Array.from(
+			new Set(coinflips.flatMap(({ player1, player2 }) => [player1, player2].filter(Boolean))),
+		);
+
+		const user_info = await getUserInfo(
+			connection,
+			all_player_ids.filter((id): id is string => id !== null),
+		);
+
+		const user_map = new Map(
+			user_info.map((user) => [
+				user.id,
+				{ id: user.id, username: user.username, display_name: user.display_name },
+			]),
+		);
 
 		const all_item_ids = Array.from(
 			new Set(
@@ -45,20 +62,31 @@ export default async function (): Promise<[number, any]> {
 
 		const corrected_coinflips = coinflips.map((coinflip) => ({
 			...coinflip,
-			player1_items: coinflip.player1_items
-				.split(",")
-				.map((id) => `${id}:${item_map.get(id)}`),
+			player1: user_map.get(coinflip.player1) || {
+				id: coinflip.player1,
+				username: null,
+				display_name: null,
+			},
+			player2: coinflip.player2
+				? user_map.get(coinflip.player2) || {
+						id: coinflip.player2,
+						username: null,
+						display_name: null,
+				  }
+				: null,
+			player1_items: coinflip.player1_items.split(",").map((id) => `${id}:${item_map.get(id)}`),
 			player2_items: coinflip.player2_items
-				? coinflip.player2_items
-						.split(",")
-						.map((id) => `${id}:${item_map.get(id)}`)
+				? coinflip.player2_items.split(",").map((id) => `${id}:${item_map.get(id)}`)
 				: null,
 		}));
 
-		return [200, {
-			status: "OK",
-			coinflips: corrected_coinflips,
-		}];
+		return [
+			200,
+			{
+				status: "OK",
+				coinflips: corrected_coinflips,
+			},
+		];
 	} catch (error) {
 		console.error(error);
 		return [500, { error: "Failed to get coinflips" }];

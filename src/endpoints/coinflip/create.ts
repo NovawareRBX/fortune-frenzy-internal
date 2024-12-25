@@ -75,6 +75,8 @@ export default async function (
 
 		const item_ids_string = getItemString(connection, items);
 
+		const [user_row] = await query(connection, "SELECT * FROM users WHERE user_id = ?", [`${user_id}`]);
+
 		await connection.commit();
 		return [
 			200,
@@ -82,7 +84,11 @@ export default async function (
 				status: "OK",
 				data: {
 					id: coinflip_id,
-					player1: String(user_id),
+					player1: {
+						id: user_id,
+						username: user_row.name,
+						display_name: user_row.displayName,
+					},
 					player2: null,
 					player1_items: item_ids_string,
 					player2_items: null,
