@@ -49,8 +49,12 @@ const endpoints: Endpoint[] = [
 		method: "GET",
 		url: "/coinflips",
 		authType: "none",
-		callback: async () => {
-			return await get_coinflips();
+		callback: async (
+			request: FastifyRequest<{
+				Querystring: { server_id?: string };
+			}>,
+		) => {
+			return await get_coinflips(request);
 		},
 	},
 ];

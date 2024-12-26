@@ -1,13 +1,25 @@
+import { FastifyRequest } from "fastify";
 import { getMariaConnection } from "../../service/mariadb";
 import getItemString from "../../utilities/getItemString";
 import getUserInfo from "../../utilities/getUserInfo";
 import query from "../../utilities/smartQuery";
 
-export default async function (): Promise<[number, any]> {
+export default async function (
+	request: FastifyRequest<{
+		Querystring: { server_id?: string };
+	}>,
+): Promise<[number, any]> {
 	const connection = await getMariaConnection();
 	if (!connection) return [500, { error: "Failed to connect to the database" }];
 
 	try {
+		const { server_id } = request.query;
+		let db_query = "SELECT * FROM coinflips WHERE status != 'completed'";
+
+		if (server_id) {
+			db_query += " AND server_id = ?";
+		}
+
 		const coinflips = await query<
 			Array<{
 				id: string;
@@ -21,7 +33,7 @@ export default async function (): Promise<[number, any]> {
 				player1_coin: 1 | 2;
 				winning_coin: 1 | 2 | null;
 			}>
-		>(connection, "SELECT * FROM coinflips WHERE status != 'completed'");
+		>(connection, db_query, server_id ? [server_id] : []);
 
 		if (coinflips.length === 0) {
 			return [200, { status: "OK", coinflips: [] }];

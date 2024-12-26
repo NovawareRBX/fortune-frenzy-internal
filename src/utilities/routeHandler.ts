@@ -13,7 +13,7 @@ export async function registerRoutes(fastify: FastifyInstance, endpoints: Endpoi
 				const start_time = Date.now();
 
 				const [statusCode, response] = await endpoint.callback(
-					request as FastifyRequest<{ Params: any; Body: any }>,
+					request as FastifyRequest<{ Params: any; Body: any; Querystring: any; Headers: any }>,
 					reply,
 				);
 

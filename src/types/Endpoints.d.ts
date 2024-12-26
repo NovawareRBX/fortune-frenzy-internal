@@ -3,20 +3,20 @@ import { FastifyRequest, FastifyReply, HTTPMethods, FastifySchema } from "fastif
 export type AuthType = "none" | "server_key" | "master_key";
 
 export interface Endpoint<Params = any, Body = any, Query = any, Headers = any> {
-	method: HTTPMethods;
-	url: string;
-	authType: AuthType;
-	requiredHeaders?: Array<string>;
-	schema?: FastifySchema;
-	callback: (
-		request: FastifyRequest<{
-			Params: Params;
-			Body: Body;
-			Query?: Query;
-			Headers?: Headers;
-		}>,
-		reply: FastifyReply,
-	) => Promise<[status: number, data: any]>;
+    method: HTTPMethods; // Defines the HTTP method (GET, POST, etc.)
+    url: string; // The URL path for the endpoint
+    authType: AuthType; // Custom type for authentication type
+    requiredHeaders?: string[]; // Optional list of required headers
+    schema?: FastifySchema; // Optional schema for validation
+    callback: (
+        request: FastifyRequest<{
+            Params: Params;
+            Body: Body;
+            Querystring: Query; // Fixed: Use `Querystring` as per Fastify convention
+            Headers: Headers;
+        }>,
+        reply: FastifyReply,
+    ) => Promise<[status: number, data: any]>; // Ensures a tuple is returned with status and data
 }
 
 export interface ItemListing {
