@@ -10,14 +10,31 @@ export default async function (
 	}>,
 ): Promise<[number, any]> {
 	const connection = await getMariaConnection();
-	if (!connection) return [500, { error: "Failed to connect to the database" }];
+	if (!connection) {
+		return [500, { error: "Failed to connect to the database" }];
+	}
 
 	try {
 		const { server_id } = request.query;
-		let db_query = "SELECT * FROM coinflips WHERE status != 'completed'";
-
+		let db_query = `
+      SELECT
+        id,
+        player1,
+        player2,
+        player1_items,
+        player2_items,
+        status,
+        type,
+        server_id,
+        player1_coin,
+        winning_coin
+      FROM coinflips
+      WHERE status != 'completed'
+    `;
+		const params: Array<string> = [];
 		if (server_id) {
-			db_query += " AND server_id = ?";
+			db_query += ` AND (type = 'global' OR (type = 'server' AND server_id = ?))`;
+			params.push(server_id);
 		}
 
 		const coinflips = await query<
@@ -33,7 +50,7 @@ export default async function (
 				player1_coin: 1 | 2;
 				winning_coin: 1 | 2 | null;
 			}>
-		>(connection, db_query, server_id ? [server_id] : []);
+		>(connection, db_query, params);
 
 		if (coinflips.length === 0) {
 			return [200, { status: "OK", coinflips: [] }];
@@ -47,7 +64,6 @@ export default async function (
 			connection,
 			all_player_ids.filter((id): id is string => id !== null),
 		);
-
 		const user_map = new Map(
 			user_info.map((user) => [
 				user.id,
@@ -92,13 +108,7 @@ export default async function (
 				: null,
 		}));
 
-		return [
-			200,
-			{
-				status: "OK",
-				coinflips: corrected_coinflips,
-			},
-		];
+		return [200, { status: "OK", coinflips: corrected_coinflips }];
 	} catch (error) {
 		console.error(error);
 		return [500, { error: "Failed to get coinflips" }];
