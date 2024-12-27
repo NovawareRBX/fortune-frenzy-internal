@@ -25,11 +25,6 @@ export default async function (
 			return [400, { error: "Coinflip cannot be started" }];
 		}
 
-		coinflip.status = "completed";
-		coinflip.results = secureFlip([coinflip.player1, coinflip.player2]);
-
-		await redis.set(`coinflip:${id}`, JSON.stringify(coinflip), { EX: 3600 }); // Refresh TTL
-
 		const response = await request.server.inject({
 			method: "POST",
 			url: "/items/item-transfer",
@@ -46,13 +41,15 @@ export default async function (
 		});
 
 		if (response.statusCode !== 200) {
-			console.error("Failed to transfer items:", response.body);
 			coinflip.status = "failed";
 			await redis.set(`coinflip:${id}`, JSON.stringify(coinflip), { EX: 3600 });
 			return [500, { error: "Internal Server Error" }];
 		}
 
 		const body = JSON.parse(response.body);
+
+		coinflip.status = "completed";
+		coinflip.results = secureFlip([coinflip.player1, coinflip.player2]);
 		coinflip.transfer_id = body.transfer_id;
 		await redis.set(`coinflip:${id}`, JSON.stringify(coinflip), { EX: 3600 });
 
