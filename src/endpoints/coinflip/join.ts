@@ -2,6 +2,7 @@ import { FastifyRequest } from "fastify";
 import { getMariaConnection } from "../../service/mariadb";
 import query from "../../utilities/smartQuery";
 import getItemString from "../../utilities/getItemString";
+import getUserInfo from "../../utilities/getUserInfo";
 
 export default async function (
 	request: FastifyRequest<{
@@ -78,6 +79,8 @@ export default async function (
 			[user_id, items.join(","), coinflip_id],
 		);
 
+		const [player1_info, player2_info] = await getUserInfo(connection, [coinflip[0].player1, user_id]);
+
 		await connection.commit();
 		return [
 			200,
@@ -85,8 +88,8 @@ export default async function (
 				status: "OK",
 				data: {
 					id: coinflip_id,
-					player1: coinflip[0].player1,
-					player2: String(user_id),
+					player1: player1_info,
+					player2: player2_info,
 					player1_items: player1_item_ids_string,
 					player2_items: player2_item_ids_string,
 					status: "awaiting_confirmation",

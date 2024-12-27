@@ -3,6 +3,7 @@ import { getMariaConnection } from "../../service/mariadb";
 import query from "../../utilities/smartQuery";
 import { randomBytes } from "crypto";
 import getItemString from "../../utilities/getItemString";
+import getUserInfo from "../../utilities/getUserInfo";
 
 export default async function (
 	request: FastifyRequest<{
@@ -34,7 +35,6 @@ export default async function (
 
 	try {
 		await connection.beginTransaction();
-		// first get the total number of active coinflips globally
 		const global_coinflips = await query(
 			connection,
 			"SELECT COUNT(*) AS count FROM coinflips WHERE status != 'completed'",
@@ -74,8 +74,7 @@ export default async function (
 		);
 
 		const item_ids_string = getItemString(connection, items);
-
-		const [user_row] = await query(connection, "SELECT * FROM users WHERE user_id = ?", [`${user_id}`]);
+		const [user_info] = await getUserInfo(connection, [user_id.toString()]);
 
 		await connection.commit();
 		return [
@@ -84,11 +83,7 @@ export default async function (
 				status: "OK",
 				data: {
 					id: coinflip_id,
-					player1: {
-						id: user_id,
-						username: user_row.name,
-						display_name: user_row.displayName,
-					},
+					player1: user_info,
 					player2: null,
 					player1_items: item_ids_string,
 					player2_items: null,
