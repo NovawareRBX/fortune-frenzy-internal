@@ -6,6 +6,7 @@ import root from "../endpoints/index/root";
 import packet from "../endpoints/index/packet";
 import register_server from "../endpoints/index/register_server";
 import settings from "../endpoints/index/settings";
+import server_info from "../endpoints/index/server_info";
 
 const endpoints: Endpoint[] = [
 	{
@@ -22,6 +23,14 @@ const endpoints: Endpoint[] = [
 		authType: "server_key",
 		callback: async (request: FastifyRequest<{ Params: { server_id: string }; Body: { Packet: string } }>) => {
 			return await packet(request);
+		},
+	},
+	{
+		method: "GET",
+		url: "/server/:server_id",
+		authType: "none",
+		callback: async (request: FastifyRequest<{ Params: { server_id: string } }>) => {
+			return await server_info(request);
 		},
 	},
 	{
