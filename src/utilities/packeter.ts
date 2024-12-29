@@ -61,7 +61,7 @@ export async function packeter(server: FastifyInstance, server_id: string, packe
 		redis.set(`servers:${server_id}:last_packet`, JSON.stringify(packet), { EX: 1 }),
 	]);
 
-	await new Promise((resolve) => setTimeout(resolve, 15));
+	await new Promise((resolve) => setTimeout(resolve, 10));
 	const responses = await redis.hGetAll(`packet:${server_id}`);
 
 	const responses_object = Object.keys(responses).reduce((acc: { [key: string]: any }, key: string) => {
