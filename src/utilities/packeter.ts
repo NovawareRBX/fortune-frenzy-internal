@@ -3,20 +3,6 @@ import { getRedisConnection } from "../service/redis";
 
 export async function packeter(server: FastifyInstance, server_id: string, packet: Array<any>): Promise<[number, any]> {
 	const redis = await getRedisConnection();
-	const responses = await redis.hGetAll(`packet:${server_id}`);
-
-	const responses_object = Object.keys(responses).reduce((acc: { [key: string]: any }, key: string) => {
-		acc[key] = JSON.parse(responses[key]);
-		return acc;
-	}, {});
-
-	await redis.del(`packet:${server_id}`);
-
-	await Promise.all([
-		redis.set(`servers:${server_id}:active`, "true", { EX: 1 }),
-		redis.set(`servers:${server_id}:last_packet`, JSON.stringify(packet), { EX: 1 }),
-	]);
-
 	packet.forEach((element) => {
 		(async () => {
 			const route_str = element.route;
@@ -69,6 +55,21 @@ export async function packeter(server: FastifyInstance, server_id: string, packe
 			}
 		})();
 	});
+
+	await Promise.all([
+		redis.set(`servers:${server_id}:active`, "true", { EX: 1 }),
+		redis.set(`servers:${server_id}:last_packet`, JSON.stringify(packet), { EX: 1 }),
+	]);
+
+	await new Promise((resolve) => setTimeout(resolve, 15));
+	const responses = await redis.hGetAll(`packet:${server_id}`);
+
+	const responses_object = Object.keys(responses).reduce((acc: { [key: string]: any }, key: string) => {
+		acc[key] = JSON.parse(responses[key]);
+		return acc;
+	}, {});
+
+	await redis.del(`packet:${server_id}`);
 
 	return [
 		200,
