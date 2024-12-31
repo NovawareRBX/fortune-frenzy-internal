@@ -5,6 +5,7 @@ import create from "../endpoints/coinflip/create";
 import join from "../endpoints/coinflip/join";
 import get_coinflips from "../endpoints/coinflip/get_coinflips";
 import start from "../endpoints/coinflip/start";
+import cancel from "../endpoints/coinflip/cancel";
 
 const endpoints: Endpoint[] = [
 	{
@@ -36,7 +37,7 @@ const endpoints: Endpoint[] = [
 	{
 		method: "POST",
 		url: "/coinflip/start/:coinflip_id",
-		authType: "none",
+		authType: "server_key",
 		callback: async (
 			request: FastifyRequest<{
 				Params: { coinflip_id: string };
@@ -57,6 +58,18 @@ const endpoints: Endpoint[] = [
 			return await get_coinflips(request);
 		},
 	},
+	{
+		method: "POST",
+		url: "/cancel;/:coinflip_id",
+		authType: "server_key",
+		callback: async (
+			request: FastifyRequest<{
+				Params: { coinflip_id: string };
+			}>,
+		) => {
+			return await cancel(request);
+		},
+	}
 ];
 
 async function coinflipRoutes(fastify: FastifyInstance) {

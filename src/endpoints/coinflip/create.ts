@@ -103,3 +103,24 @@ export default async function (
 		connection.release();
 	}
 }
+
+export interface CoinflipData {
+	id: string;
+	player1: {
+		id: number;
+		username?: string;
+		display_name?: string;
+	};
+	player2?: {
+		id: number;
+		username?: string;
+		display_name?: string;
+	};
+	player1_items: string;
+	player2_items?: string;
+	status: "waiting_for_player" | "awaiting_confirmation" | "completed" | "failed";
+	type: "server" | "global" | "friends";
+	server_id: string;
+	player1_coin: 1 | 2;
+	winning_coin?: 1 | 2;
+}
