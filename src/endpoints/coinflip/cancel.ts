@@ -29,7 +29,6 @@ export default async function (
 		}
 
 		const parsed_coinflip: CoinflipData = JSON.parse(coinflip_data);
-
 		if (parsed_coinflip.status !== "waiting_for_player") {
 			return [400, { error: "Coinflip cannot be canceled" }];
 		}

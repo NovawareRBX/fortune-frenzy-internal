@@ -60,7 +60,7 @@ const endpoints: Endpoint[] = [
 	},
 	{
 		method: "POST",
-		url: "/cancel;/:coinflip_id",
+		url: "/coinflip/cancel/:coinflip_id",
 		authType: "server_key",
 		callback: async (
 			request: FastifyRequest<{
