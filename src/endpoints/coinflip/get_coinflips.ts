@@ -21,7 +21,7 @@ export default async function (
 		const coinflipsRaw = await redis.mGet(coinflipIds.map((id) => `coinflip:${id}`));
 		const coinflips = coinflipsRaw.map((json) => (json ? JSON.parse(json) : null)).filter((c) => c !== null);
 		const filteredCoinflips = coinflips.filter((cf) => {
-			if (cf.status === "completed" || cf.status === "failed") return false;
+			// if (cf.status === "completed" || cf.status === "failed") return false;
 			if (cf.type === "global") return true;
 			if (cf.type === "server" && cf.server_id === server_id) return true;
 			return false;

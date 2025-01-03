@@ -3,56 +3,76 @@ import { AuthType } from "../types/Endpoints";
 import { getRedisConnection } from "../service/redis";
 import { createHash } from "crypto";
 
+class AuthError extends Error {
+	constructor(message: string) {
+		super(message);
+		this.name = "AuthError";
+	}
+}
+
 export async function authorization(
 	request: FastifyRequest,
 	authType: AuthType,
 	requiredHeaders?: Array<string>,
 ): Promise<boolean> {
-	const MASTER_KEY = process.env.MASTER_KEY;
-	const PACKETER_BYPASS_KEY = process.env.PACKETER_BYPASS_KEY;
+	const MASTER_KEY = process.env.MASTER_KEY || "";
+	const PACKETER_BYPASS_KEY = process.env.PACKETER_BYPASS_KEY || "";
 
-	const checkRequiredHeaders = (headers: Array<string>) => {
+	const redis = await getRedisConnection();
+
+	const validateHeaders = (headers: string[]) => {
 		for (const header of headers) {
 			if (!request.headers[header]) {
-				throw new Error(`Missing required header: ${header}`);
+				throw new AuthError(`Missing required header: ${header}`);
 			}
 		}
 	};
 
-	if (requiredHeaders) {
-		checkRequiredHeaders(requiredHeaders);
-	}
+	const validateInternalAuth = async (): Promise<boolean> => {
+		const key = request.headers["internal-authentication"] as string;
+		if (!key) throw new AuthError("Missing internal authentication key");
 
-	if (authType === "server_key") {
+		const storedKey = await redis.get(`tempauth:${key}`);
+		if (key !== storedKey) throw new AuthError("Invalid internal authentication key");
+
+		await redis.del(`tempauth:${key}`);
+		return true;
+	};
+
+	const validateServerKey = async (): Promise<boolean> => {
 		if (request.headers["packeter-master-key"] === PACKETER_BYPASS_KEY) {
 			return true;
 		}
 
-		checkRequiredHeaders(["server-id", "api-key"]);
+		validateHeaders(["server-id", "api-key"]);
 
-		const redis = await getRedisConnection();
-		const server_id = request.headers["server-id"] as string;
-		const api_key = request.headers["api-key"] as string;
-		const stored_api_key = await redis.get(`api_key:${server_id}`);
+		const serverId = request.headers["server-id"] as string;
+		const apiKey = request.headers["api-key"] as string;
 
-		const hashed_api_key = createHash("sha256").update(api_key).digest("hex");
+		const storedApiKey = await redis.get(`api_key:${serverId}`);
+		const hashedApiKey = createHash("sha256").update(apiKey).digest("hex");
 
-		if (hashed_api_key !== stored_api_key) {
-			throw new Error("Invalid API key");
+		if (hashedApiKey !== storedApiKey) {
+			throw new AuthError("Invalid API key");
 		}
 
 		return true;
-	}
+	};
 
-	if (authType === "master_key") {
-		checkRequiredHeaders(["master-key"]);
+	const validateMasterKey = (): boolean => {
+		validateHeaders(["master-key"]);
 
 		if (request.headers["master-key"] !== MASTER_KEY) {
-			throw new Error("Invalid master key");
+			throw new AuthError("Invalid master key");
 		}
 
 		return true;
-	}
+	};
+
+	if (requiredHeaders) validateHeaders(requiredHeaders);
+	if (request.headers["internal-authentication"]) return await validateInternalAuth();
+	if (authType === "server_key") return await validateServerKey();
+	if (authType === "master_key") return validateMasterKey();
 
 	return true;
 }

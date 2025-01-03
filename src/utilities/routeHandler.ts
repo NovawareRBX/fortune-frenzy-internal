@@ -17,7 +17,7 @@ export async function registerRoutes(fastify: FastifyInstance, endpoints: Endpoi
 					reply,
 				);
 
-				console.log(`[API] ${endpoint.method} ${endpoint.url} - ${Date.now() - start_time}ms`);
+				// console.log(`[API] ${endpoint.method} ${endpoint.url} - ${Date.now() - start_time}ms`);
 
 				reply.code(statusCode).send(response);
 			},
