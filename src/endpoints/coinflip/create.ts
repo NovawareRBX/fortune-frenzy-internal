@@ -56,10 +56,10 @@ export default async function (
 			return [400, { error: "Active coinflip already exists" }];
 		}
 
-		const total_coinflips = await redis.sCard("coinflips:global");
-		if (total_coinflips >= 300) {
-			return [400, { error: "Too many active coinflips" }];
-		}
+		// const total_coinflips = await redis.sCard("coinflips:global");
+		// if (total_coinflips >= 300) {
+		// 	return [400, { error: "Too many active coinflips" }];
+		// }
 
 		const coinflip_id = randomBytes(20).toString("base64").replace(/[+/=]/g, "").substring(0, 20);
 
