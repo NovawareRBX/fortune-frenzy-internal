@@ -4,6 +4,7 @@ import { getRedisConnection } from "../../service/redis";
 import getTotalValue from "../../utilities/getTotalValue";
 import { CoinflipData } from "./create";
 import doSelfHttpRequest from "../../utilities/doSelfHttpRequest";
+import { getMariaConnection } from "../../service/mariadb";
 
 export default async function (
 	request: FastifyRequest<{
@@ -16,6 +17,15 @@ export default async function (
 
 	const id = request.params.coinflip_id;
 	const redis = await getRedisConnection();
+	const maria = await getMariaConnection();
+
+	if (!id) {
+		return [400, { error: "Invalid request" }];
+	}
+
+	if (!redis || !maria) {
+		return [500, { error: "Internal Server Error" }];
+	}
 
 	try {
 		const coinflipRaw = await redis.get(`coinflip:${id}`);
@@ -79,11 +89,35 @@ export default async function (
 			},
 		});
 
+		await maria.query(
+			"INSERT INTO past_coinflips (id, player1_id, player2_id, player1_items, player2_items, status, type, server_id, player1_coin, winning_coin, transfer_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+			[
+				id,
+				coinflip.player1.id,
+				coinflip.player2.id,
+				coinflip.player1_items.map((item: string) => item.split(":")[0]).join(","),
+				coinflip.player2_items.map((item: string) => item.split(":")[0]).join(","),
+				coinflip.status,
+				coinflip.type,
+				coinflip.server_id,
+				coinflip.player1_coin,
+				coinflip.winning_coin,
+				coinflip.transfer_id,
+			],
+		);
+
+		const [auto_id] = await maria.query("SELECT auto_id FROM past_coinflips WHERE id = ?", [id]);
+		coinflip.auto_id = auto_id.auto_id;
+
+		await redis.set(`coinflip:${id}`, JSON.stringify(coinflip), { EX: 40 });
+
 		return [
 			200,
 			{
 				status: "OK",
-				data: coinflip,
+				data: {
+					...coinflip,
+				},
 			},
 		];
 	} catch (error) {

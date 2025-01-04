@@ -124,4 +124,5 @@ export interface CoinflipData {
 	player1_coin: 1 | 2;
 	winning_coin?: 1 | 2;
 	transfer_id?: string;
+	auto_id?: number;
 }
