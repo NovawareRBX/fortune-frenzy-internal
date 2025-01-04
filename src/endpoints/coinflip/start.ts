@@ -68,6 +68,8 @@ export default async function (
 		await redis.set(`coinflip:${id}`, JSON.stringify(coinflip), { EX: 40 });
 		await redis.del(`coinflip:${id}:user:${coinflip.player1.id}`);
 		await redis.del(`coinflip:${id}:user:${coinflip.player2.id}`);
+		await redis.sRem(`coinflips:global`, id);
+		await redis.sRem(`coinflips:server:${coinflip.server_id}`, id);
 
 		doSelfHttpRequest(request, {
 			method: "POST",
