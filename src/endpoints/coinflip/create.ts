@@ -4,6 +4,7 @@ import { getRedisConnection } from "../../service/redis";
 import { randomBytes } from "crypto";
 import getItemString from "../../utilities/getItemString";
 import getUserInfo from "../../utilities/getUserInfo";
+import discordLog from "../../utilities/discordLog";
 
 export default async function (
 	request: FastifyRequest<{
@@ -89,6 +90,8 @@ export default async function (
 			.set(`coinflip:${coinflip_id}:user:${user_id}`, "active", { EX: 3600 })
 			.exec();
 
+		discordLog("Log", "Coinflip Created", `Coinflip ${coinflip_id} has been created`);
+
 		return [
 			200,
 			{
@@ -97,7 +100,7 @@ export default async function (
 			},
 		];
 	} catch (error) {
-		console.error("Error creating coinflip:", error);
+		discordLog("Warning", "Failed to create coinflip", `Failed to create coinflip with error: ${error}`);
 		return [500, { error: "Failed to create coinflip" }];
 	} finally {
 		connection.release();

@@ -5,6 +5,7 @@ import getTotalValue from "../../utilities/getTotalValue";
 import { CoinflipData } from "./create";
 import doSelfHttpRequest from "../../utilities/doSelfHttpRequest";
 import { getMariaConnection } from "../../service/mariadb";
+import discordLog from "../../utilities/discordLog";
 
 export default async function (
 	request: FastifyRequest<{
@@ -111,6 +112,8 @@ export default async function (
 
 		await redis.set(`coinflip:${id}`, JSON.stringify(coinflip), { EX: 40 });
 
+		discordLog("Log", "Coinflip Completed", `Coinflip ${id} has been completed`);
+
 		return [
 			200,
 			{
@@ -121,6 +124,7 @@ export default async function (
 			},
 		];
 	} catch (error) {
+		discordLog("EmergencyWakeTheFuckUpNow", "Failed to start coinflip", `Failed to process coinflip ${id} with error: ${error}`);
 		console.error("Failed to process coinflip:", error);
 		return [500, { error: "Internal Server Error" }];
 	}

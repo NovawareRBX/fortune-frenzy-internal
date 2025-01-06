@@ -2,6 +2,7 @@ import { FastifyRequest } from "fastify";
 import { getRedisConnection } from "../../service/redis";
 import { getMariaConnection } from "../../service/mariadb";
 import { CoinflipData } from "./create";
+import discordLog from "../../utilities/discordLog";
 
 export default async function (
 	request: FastifyRequest<{
@@ -42,9 +43,12 @@ export default async function (
 			.sRem("coinflips:global", coinflip_id)
 			.exec();
 
+		discordLog("Log", "Coinflip canceled", `Coinflip ${coinflip_id} has been cancelled`);
+
 		return [200, { status: "OK", message: "Coinflip canceled successfully" }];
 	} catch (error) {
-		console.error("Error canceling coinflip:", error);
+		discordLog("Danger", "Failed to cancel coinflip", `Failed to cancel coinflip with error: ${error}`);
+
 		return [500, { error: "Failed to cancel coinflip" }];
 	} finally {
 		connection.release();

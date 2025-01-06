@@ -2,6 +2,7 @@ import { FastifyRequest } from "fastify";
 import { getMariaConnection } from "../../service/mariadb";
 import query from "../../utilities/smartQuery";
 import { randomBytes } from "crypto";
+import discordLog from "../../utilities/discordLog";
 
 export default async function (
 	request: FastifyRequest<{
@@ -84,8 +85,36 @@ export default async function (
 
 		await query(connection, "UPDATE item_transfers SET status = 'confirmed' WHERE transfer_id = ?", [transfer_id]);
 		await connection.commit();
+
+		discordLog(
+			"Log",
+			"Item Transfer Confirmed",
+			`Item transfer has been confirmed.\n\`\`\`json\n${JSON.stringify(
+				{
+					transfer_id,
+					user_id,
+				},
+				null,
+				2,
+			)}\n\`\`\``,
+		);
+
 		return [200, { status: "OK" }];
 	} catch (error) {
+		discordLog(
+			"Danger",
+			"Item Transfer Failed",
+			`Failed to process item transfer.\n\`\`\`json\n${JSON.stringify(
+				{
+					transfer_id: request.params.transfer_id,
+					user_id: request.body.user_id,
+					error,
+				},
+				null,
+				2,
+			)}\n\`\`\``,
+		);
+
 		await connection.rollback();
 		return [500, { error: "Failed to create transfer" }];
 	} finally {

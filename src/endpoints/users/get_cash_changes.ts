@@ -1,6 +1,7 @@
 import { FastifyRequest } from "fastify";
 import { getMariaConnection } from "../../service/mariadb";
 import smartQuery from "../../utilities/smartQuery";
+import discordLog from "../../utilities/discordLog";
 
 interface CashChangeRequest {
 	user_id: bigint;
@@ -48,9 +49,17 @@ export default async function handleRequest(request: FastifyRequest): Promise<[n
 
 		await connection.commit();
 
+		discordLog(
+			"Log",
+			"Processed Cash Changes",
+			`Processed cash changes for users ${userIds.join(", ")} with amounts ${changes
+				.map((change) => change.amount)
+				.join(", ")}`,
+		);
+
 		return [200, { status: "OK", changes }];
 	} catch (error) {
-		console.error("Error fetching or updating external cash change requests:", error);
+		discordLog("Warning", "Failed to process cash changes", `Failed to process cash changes with error: ${error}`);
 		await connection.rollback();
 		return [500, { error: "Internal Server Error" }];
 	} finally {

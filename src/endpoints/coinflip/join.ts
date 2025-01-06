@@ -4,6 +4,7 @@ import { getMariaConnection } from "../../service/mariadb";
 import getItemString from "../../utilities/getItemString";
 import getUserInfo from "../../utilities/getUserInfo";
 import doSelfHttpRequest from "../../utilities/doSelfHttpRequest";
+import discordLog from "../../utilities/discordLog";
 
 export default async function (
 	request: FastifyRequest<{
@@ -92,6 +93,8 @@ export default async function (
 			// it worked :)
 		}, 1000 * 1.5);
 
+		discordLog("Log", "Coinflip Joined", `User ${user_id} joined coinflip ${coinflip_id}`);
+
 		return [
 			200,
 			{
@@ -100,7 +103,7 @@ export default async function (
 			},
 		];
 	} catch (error) {
-		console.error("Failed to join coinflip", error);
+		discordLog("Warning", "Failed to join coinflip", `Failed to join coinflip ${coinflip_id} with error: ${error}`);
 		return [500, { error: "Failed to join coinflip" }];
 	} finally {
 		connection.release();

@@ -3,6 +3,7 @@ import { getMariaConnection } from "../../service/mariadb";
 import getRandomWeightedEntry, { Entry } from "../../utilities/getRandomWeightedEntry";
 import smartQuery from "../../utilities/smartQuery";
 import { ItemCase } from "../../types/Endpoints";
+import discordLog from "../../utilities/discordLog";
 
 export default async function (
 	request: FastifyRequest<{ Params: { id: string }; Body: { user_id: string } }>,
@@ -50,6 +51,8 @@ export default async function (
 
 		await connection.commit();
 
+		discordLog("Log", "Case opened", `User ${user_id} opened case ${id} and received item ${item_id}`);
+
 		return [
 			200,
 			{
@@ -66,7 +69,8 @@ export default async function (
 			},
 		];
 	} catch (error) {
-		console.error(error);
+		discordLog("Danger", "Failed to open case", `Failed to open case with error: ${error}`);
+
 		await connection.rollback();
 		return [500, { error: "Internal server error" }];
 	} finally {

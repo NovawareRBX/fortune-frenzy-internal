@@ -6,6 +6,7 @@ import user from "../endpoints/users/user";
 import user_inventory from "../endpoints/users/user_inventory";
 import add_cash from "../endpoints/users/add_cash";
 import get_cash_changes from "../endpoints/users/get_cash_changes";
+import user_count from "../endpoints/users/user_count";
 
 const endpoints: Endpoint[] = [
 	{
@@ -38,6 +39,14 @@ const endpoints: Endpoint[] = [
 		authType: "server_key",
 		callback: async (request: FastifyRequest) => {
 			return await get_cash_changes(request);
+		},
+	},
+	{
+		method: "GET",
+		url: "/users/total",
+		authType: "none",
+		callback: async (request: FastifyRequest) => {
+			return await user_count(request);
 		},
 	},
 ];

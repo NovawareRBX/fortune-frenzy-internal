@@ -1,6 +1,7 @@
 import { FastifyReply, FastifyRequest } from "fastify";
 import { getMariaConnection } from "../../service/mariadb";
 import smartQuery from "../../utilities/smartQuery";
+import discordLog from "../../utilities/discordLog";
 
 export default async function (
 	request: FastifyRequest<{ Params: { id: string }; Body: { name?: string; displayName?: string } }>,
@@ -39,6 +40,8 @@ export default async function (
 
 		const [result] = await smartQuery(connection, "SELECT * FROM users WHERE user_id = ?", [user_id]);
 
+		discordLog("Log", "User Updated", `Updated user ${user_id} with name ${name} and displayName ${displayName}`);
+
 		return [
 			200,
 			{
@@ -47,7 +50,11 @@ export default async function (
 			},
 		];
 	} catch (error) {
-		console.error("Error fetching user:", error);
+		discordLog(
+			"Warning",
+			"Failed to update user",
+			`Failed to update user ${request.params.id} with error: ${error}`,
+		);
 		return [500, { error: "Internal Server Error" }];
 	} finally {
 		await connection.release();

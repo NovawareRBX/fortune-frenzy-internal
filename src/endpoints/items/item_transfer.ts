@@ -2,6 +2,7 @@ import { FastifyRequest } from "fastify";
 import { getMariaConnection } from "../../service/mariadb";
 import query from "../../utilities/smartQuery";
 import { randomBytes } from "crypto";
+import discordLog from "../../utilities/discordLog";
 
 export default async function (
 	request: FastifyRequest<{
@@ -61,8 +62,23 @@ export default async function (
 			values,
 		);
 
+		discordLog(
+			"Log",
+			"Item Transfer Created",
+			`A new item transfer has been created.\n\`\`\`json\n${JSON.stringify({
+				transfer_id,
+				users: request.body,
+			})}\n\`\`\``,
+		);
+
 		return [200, { status: "OK", transfer_id }];
 	} catch (error) {
+		discordLog(
+			"Danger",
+			"Item Transfer Creation Failed",
+			`Failed to create item transfer.\n\`\`\`json\n${JSON.stringify({ error: error })}\n\`\`\``,
+		);
+
 		console.error("item_transfer", error);
 		return [500, { error: "Failed to create transfer" }];
 	} finally {
