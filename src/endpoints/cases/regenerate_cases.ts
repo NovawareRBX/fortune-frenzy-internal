@@ -22,16 +22,19 @@ const UI_DATA = [
 ];
 
 const ITEMS_PER_CASE = 10;
-const MIN_PROFIT_CHANCE = 0.45;
-const MAX_PROFIT_CHANCE = 0.51;
-
 function selectCaseItems(
 	validItems: { id: string; value: number }[],
 	casePrice: number,
 	usedItemIds: Set<string>,
 ): { id: string; value: number }[] {
-	const items_with_higher_value = validItems.filter((item) => item.value >= casePrice && !usedItemIds.has(item.id));
-	const items_with_lower_value = validItems.filter((item) => item.value < casePrice && !usedItemIds.has(item.id));
+	const items_with_higher_value = validItems.filter(
+		(item) => item.value >= casePrice && !usedItemIds.has(item.id) && item.value >= casePrice * 0.5,
+	);
+	const items_with_lower_value = validItems.filter(
+		(item) => item.value < casePrice && !usedItemIds.has(item.id) && item.value >= casePrice * 0.5,
+	);
+	const backup_items = validItems.filter((item) => item.value < casePrice * 0.5 && !usedItemIds.has(item.id));
+
 	const case_item_ids = new Set<string>();
 	const items: { id: string; value: number }[] = [];
 
@@ -58,43 +61,60 @@ function selectCaseItems(
 		}
 	}
 
+	while (items.length < ITEMS_PER_CASE && backup_items.length > 0) {
+		const randomIndex = Math.floor(Math.random() * backup_items.length);
+		const item = backup_items.splice(randomIndex, 1)[0];
+
+		if (item && !case_item_ids.has(item.id)) {
+			items.push(item);
+			case_item_ids.add(item.id);
+		}
+	}
+
 	return items.sort(() => Math.random() - 0.5);
 }
 
 function calculateItemChances(
 	items: { id: string; value: number }[],
 	casePrice: number,
-): { id: string; chance: number }[] {
-	const offset = casePrice / 1.4;
-	const adjusted_values = items.map((item) => 1 / Math.exp(item.value / offset));
-	const total_adjusted_value = adjusted_values.reduce((acc, value) => acc + value, 0);
-	let chances = adjusted_values.map((adjusted_value) => adjusted_value / total_adjusted_value);
-	const target_profit_chance = Math.random() * (MAX_PROFIT_CHANCE - MIN_PROFIT_CHANCE) + MIN_PROFIT_CHANCE;
+	targetProfitPct = 50
+  ) {
+	const sumValues = items.reduce((acc, it) => acc + it.value, 0);
+	const EPSILON = 1e-9;
+	let rawWeights = items.map((it) => sumValues / (it.value + EPSILON));
+	let sumRaw = rawWeights.reduce((acc, w) => acc + w, 0);
+	let chances = rawWeights.map((w) => (w / sumRaw) * 100);
+  
+	const isProfit = (value: number) => value >= casePrice;
+	let profitChance = items.reduce((acc, it, i) => {
+	  return isProfit(it.value) ? acc + chances[i] : acc;
+	}, 0);
+  
+	if (Math.abs(profitChance - targetProfitPct) < 0.01) {
+	  // good enough
+	} else {
+	  const oldNonProfit = 100 - profitChance;
+	  if (oldNonProfit > 0) {
+		const newNonProfit = 100 - targetProfitPct; 
+		const factor = newNonProfit / oldNonProfit; 
+		for (let i = 0; i < items.length; i++) {
+		  if (!isProfit(items[i].value)) {
+			chances[i] *= factor;
+		  }
+		}
 
-	let profit_chance = items
-		.map((item, i) => ({
-			value: item.value,
-			chance: chances[i],
-		}))
-		.filter((item) => item.value >= casePrice)
-		.reduce((total, item) => total + item.chance, 0);
-
-	const scaling_factor = target_profit_chance / profit_chance;
-
-	chances = chances.map((chance, i) => {
-		const is_higher_value = items[i].value >= casePrice;
-		return is_higher_value ? chance * scaling_factor : chance;
-	});
-
-	const total_chances = chances.reduce((acc, chance) => acc + chance, 0);
-	chances = chances.map((chance) => (chance / total_chances) * 100);
-
+		const sumNow = chances.reduce((acc, c) => acc + c, 0);
+		chances = chances.map((c) => (c / sumNow) * 100);
+	  }
+	}
+  
 	return items.map((item, i) => ({
-		id: `${item.id}`,
-		chance: Math.max(Number(chances[i].toFixed(5)), 0.00001),
-		claimed: 0,
+	  id: item.id,
+	  chance: Math.max(Number(chances[i].toFixed(5)), 0.00001),
+	  claimed: 0
 	}));
-}
+  }
+  
 
 function selectUnusedUIData(usedUiDataIndices: number[]): { primary: string; secondary: string; colour: string } {
 	let ui_data_index = randomInt(UI_DATA.length);
@@ -123,20 +143,25 @@ export default async function regenerate_cases(): Promise<[number, any]> {
 			const valid_items = await smartQuery<{ id: string; value: number }[]>(
 				connection,
 				"SELECT id, value FROM items WHERE value > ? AND value < ?",
-				[case_data.price / 2.5, case_data.price * 2.5],
+				[case_data.price / 4, case_data.price * 2.5],
 			);
+
+			console.log(`${valid_items.length} valid items found for case ${case_data.id}`);
 
 			const items = selectCaseItems(valid_items, case_data.price, used_item_ids);
 			items.forEach((item) => used_item_ids.add(item.id));
 			const case_items = calculateItemChances(items, case_data.price);
 			const ui_data = selectUnusedUIData(used_ui_data_indices);
 
-			await connection.query("UPDATE cases SET items = ?, ui_data = ?, next_rotation = ?, opened_count = 0 WHERE id = ?", [
-				JSON.stringify(case_items),
-				JSON.stringify(ui_data),
-				new Date(Date.now() + 1000 * 60 * 60 * 24 * 3),
-				`tier_${i + 1}`,
-			]);
+			await connection.query(
+				"UPDATE cases SET items = ?, ui_data = ?, next_rotation = ?, opened_count = 0 WHERE id = ?",
+				[
+					JSON.stringify(case_items),
+					JSON.stringify(ui_data),
+					new Date(Date.now() + 1000 * 60 * 60 * 24 * 3),
+					`tier_${i + 1}`,
+				],
+			);
 		}
 
 		return [200, { success: true }];
