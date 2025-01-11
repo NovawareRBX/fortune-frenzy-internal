@@ -2,15 +2,6 @@ import { FastifyRequest } from "fastify";
 import { getMariaConnection } from "../../service/mariadb";
 import smartQuery from "../../utilities/smartQuery";
 
-function convertBigIntToString(obj: Record<string, any>): Record<string, any> {
-	Object.keys(obj).forEach((key) => {
-		if (typeof obj[key] === "bigint") {
-			obj[key] = obj[key].toString();
-		}
-	});
-	return obj;
-}
-
 export default async function (request: FastifyRequest<{ Params: { id: string } }>): Promise<[number, any]> {
 	const connection = await getMariaConnection();
 	if (!connection) {

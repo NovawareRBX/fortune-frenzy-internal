@@ -11,6 +11,7 @@ import marketplaceRoutes from "./routes/marketplace";
 import casesRoutes from "./routes/cases";
 import itemRoutes from "./routes/items";
 import coinflipRoutes from "./routes/coinflip";
+import tradingRoutes from "./routes/trading";
 
 const numCPUs = cpus().length;
 if (cluster.isPrimary) {
@@ -35,6 +36,7 @@ if (cluster.isPrimary) {
 			await server.register(casesRoutes);
 			await server.register(itemRoutes);
 			await server.register(coinflipRoutes);
+			await server.register(tradingRoutes)
 
 			await server.listen({ port: 3000, host: "0.0.0.0" });
 

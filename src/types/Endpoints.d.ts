@@ -47,3 +47,20 @@ export interface ItemCase {
 	};
 	opened_count: number;
 }
+
+export interface Trade {
+	trade_id: number,
+	initiator_user_id: string,
+	receiver_user_id: string,
+	status: "pending" | "accepted" | "cancelled" | "completed",
+	created_at: string,
+	updated_at: string,
+	transfer_id: string,
+	items: TradeItem[],
+}
+
+export interface TradeItem {
+	item_uaid: string,
+	trade_id: number,
+	user_id: string,
+}
