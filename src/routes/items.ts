@@ -26,11 +26,14 @@ const endpoints: Endpoint[] = [
 		authType: "none",
 		callback: async (
 			request: FastifyRequest<{
-				Body: {
+				Body?: {
 					user_id: string;
 				};
 				Params: {
 					transfer_id: string;
+				};
+				Querystring: {
+					swap?: boolean;
 				};
 			}>,
 		) => {

@@ -36,8 +36,9 @@ export default async function (request: FastifyRequest<{ Params: { user_ids: str
 			);
 		}
 
+		let trade_items_map: Record<number, TradeItem[]> = {};
 		trades.forEach((trade) => {
-			trade.items = trade_items.filter((item) => item.trade_id === trade.trade_id);
+			trade_items_map[trade.trade_id] = trade_items.filter((item) => item.trade_id === trade.trade_id);
 		});
 
 		const formatted_trades = trades.map((trade) => {
@@ -45,13 +46,13 @@ export default async function (request: FastifyRequest<{ Params: { user_ids: str
 				trade_id: trade.trade_id,
 				initiator: {
 					user_id: trade.initiator_user_id,
-					items: trade.items
+					items: trade_items_map[trade.trade_id]
 						.filter((item) => item.user_id === trade.initiator_user_id)
 						.map((item) => item.item_uaid),
 				},
 				receiver: {
 					user_id: trade.receiver_user_id,
-					items: trade.items
+					items: trade_items_map[trade.trade_id]
 						.filter((item) => item.user_id === trade.receiver_user_id)
 						.map((item) => item.item_uaid),
 				},

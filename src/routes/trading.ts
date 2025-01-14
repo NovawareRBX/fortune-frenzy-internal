@@ -1,8 +1,10 @@
 import { FastifyInstance, RouteOptions, FastifyRequest, FastifyReply, RequestPayload } from "fastify";
 import { Endpoint } from "../types/Endpoints";
 import { registerRoutes } from "../utilities/routeHandler";
+
 import get_trades from "../endpoints/trading/get_trades";
 import create from "../endpoints/trading/create";
+import accept from "../endpoints/trading/accept";
 
 const endpoints: Endpoint[] = [
 	{
@@ -28,6 +30,18 @@ const endpoints: Endpoint[] = [
 			}>,
 		) => {
 			return await create(request);
+		},
+	},
+	{
+		method: "POST",
+		url: "/trades/accept/:trade_id",
+		authType: "server_key",
+		callback: async (
+			request: FastifyRequest<{
+				Params: { trade_id: string };
+			}>,
+		) => {
+			return await accept(request);
 		},
 	},
 ];

@@ -55,8 +55,7 @@ export interface Trade {
 	status: "pending" | "accepted" | "cancelled" | "completed",
 	created_at: string,
 	updated_at: string,
-	transfer_id: string,
-	items: TradeItem[],
+	transfer_id
 }
 
 export interface TradeItem {

@@ -1,16 +1,17 @@
 import { FastifyRequest } from "fastify";
 import { getMariaConnection } from "../../service/mariadb";
 import query from "../../utilities/smartQuery";
-import { randomBytes } from "crypto";
-import discordLog from "../../utilities/discordLog";
 
 export default async function (
 	request: FastifyRequest<{
-		Body: {
+		Body?: {
 			user_id: string;
 		};
 		Params: {
 			transfer_id: string;
+		};
+		Querystring: {
+			swap?: boolean;
 		};
 	}>,
 ): Promise<[number, any]> {
@@ -20,18 +21,20 @@ export default async function (
 	}
 
 	try {
+		const { swap } = request.query || {};
+		const transfer_id = request.params.transfer_id;
+		const user_id = request.body?.user_id;
+
 		if (
-			!request.body ||
-			!request.params.transfer_id ||
-			!request.body.user_id ||
-			typeof request.params.transfer_id !== "string" ||
-			typeof request.body.user_id !== "string"
+			(!request.body && !swap) ||
+			!transfer_id ||
+			(!swap && !user_id) ||
+			typeof transfer_id !== "string" ||
+			(!swap && typeof user_id !== "string")
 		) {
 			return [400, { error: "Invalid request" }];
 		}
 
-		const transfer_id = request.params.transfer_id;
-		const user_id = request.body.user_id;
 		await connection.beginTransaction();
 
 		const [transfer] = await query(connection, "SELECT * FROM item_transfers WHERE transfer_id = ?", [transfer_id]);
@@ -48,6 +51,7 @@ export default async function (
 				item_uaid: string;
 			}[]
 		>(connection, "SELECT * FROM item_transfer_items WHERE transfer_id = ?", [transfer_id]);
+
 		if (items.length === 0) {
 			await query(connection, "DELETE FROM item_transfers WHERE transfer_id = ?", [transfer_id]);
 			await connection.commit();
@@ -55,20 +59,21 @@ export default async function (
 		}
 
 		const userasset_pairs = items.map((item) => [item.user_id, item.item_uaid]);
-		const ownedItems = await query<
+		const owned_items = await query<
 			{
 				owner_id: string;
 				user_asset_id: string;
 			}[]
 		>(
 			connection,
-			`SELECT owner_id, user_asset_id FROM item_copies WHERE (owner_id, user_asset_id) IN (${userasset_pairs
-				.map(() => "(?, ?)")
-				.join(", ")}) FOR UPDATE NOWAIT`,
+			`SELECT owner_id, user_asset_id
+			 FROM item_copies
+			 WHERE (owner_id, user_asset_id) IN (${userasset_pairs.map(() => "(?, ?)").join(", ")})
+			 FOR UPDATE NOWAIT`,
 			userasset_pairs.flat(),
 		);
 
-		const owned_set = new Set(ownedItems.map((item) => `${item.owner_id}_${item.user_asset_id}`));
+		const owned_set = new Set(owned_items.map((oi) => `${oi.owner_id}_${oi.user_asset_id}`));
 		for (const item of items) {
 			if (!owned_set.has(`${item.user_id}_${item.item_uaid}`)) {
 				await query(connection, "DELETE FROM item_transfers WHERE transfer_id = ?", [transfer_id]);
@@ -77,44 +82,51 @@ export default async function (
 			}
 		}
 
-		await query(
-			connection,
-			`UPDATE item_copies SET owner_id = ? WHERE user_asset_id IN (${items.map(() => "?").join(", ")})`,
-			[user_id, ...items.map((item) => item.item_uaid)],
-		);
+		if (!swap) {
+			await query(
+				connection,
+				`UPDATE item_copies
+				 SET owner_id = ?
+				 WHERE user_asset_id IN (${items.map(() => "?").join(", ")})`,
+				[user_id, ...items.map((item) => item.item_uaid)],
+			);
+		} else {
+			const distinct_owners = Array.from(new Set(items.map((it) => it.user_id)));
+			if (distinct_owners.length !== 2) {
+				await connection.rollback();
+				return [400, { error: "Swap requires exactly two distinct users in the transfer" }];
+			}
+
+			const [owner_a, owner_b] = distinct_owners;
+			const owner_a_items = items.filter((i) => i.user_id === owner_a).map((i) => i.item_uaid);
+			const owner_b_items = items.filter((i) => i.user_id === owner_b).map((i) => i.item_uaid);
+
+			if (owner_a_items.length > 0) {
+				await query(
+					connection,
+					`UPDATE item_copies
+					 SET owner_id = ?
+					 WHERE user_asset_id IN (${owner_a_items.map(() => "?").join(", ")})`,
+					[owner_b, ...owner_a_items],
+				);
+			}
+			if (owner_b_items.length > 0) {
+				await query(
+					connection,
+					`UPDATE item_copies
+					 SET owner_id = ?
+					 WHERE user_asset_id IN (${owner_b_items.map(() => "?").join(", ")})`,
+					[owner_a, ...owner_b_items],
+				);
+			}
+		}
 
 		await query(connection, "UPDATE item_transfers SET status = 'confirmed' WHERE transfer_id = ?", [transfer_id]);
+
 		await connection.commit();
-
-		discordLog(
-			"Log",
-			"Item Transfer Confirmed",
-			`Item transfer has been confirmed.\n\`\`\`json\n${JSON.stringify(
-				{
-					transfer_id,
-					user_id,
-				},
-				null,
-				2,
-			)}\n\`\`\``,
-		);
-
 		return [200, { status: "OK" }];
 	} catch (error) {
-		discordLog(
-			"Danger",
-			"Item Transfer Failed",
-			`Failed to process item transfer.\n\`\`\`json\n${JSON.stringify(
-				{
-					transfer_id: request.params.transfer_id,
-					user_id: request.body.user_id,
-					error,
-				},
-				null,
-				2,
-			)}\n\`\`\``,
-		);
-
+		console.log(error)
 		await connection.rollback();
 		return [500, { error: "Failed to create transfer" }];
 	} finally {
