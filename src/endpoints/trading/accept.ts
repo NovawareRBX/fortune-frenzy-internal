@@ -40,7 +40,7 @@ export default async function (
 			return [500, { error: "Item transfer failed" }];
 		}
 
-		await smartQuery(connection, `UPDATE trades SET status = 'completed' WHERE trade_id = ?`, [
+		await smartQuery(connection, `UPDATE trades SET status = 'accepted' WHERE trade_id = ?`, [
 			request.params.trade_id,
 		]);
 
@@ -50,7 +50,7 @@ export default async function (
 				status: "OK",
 				trade: {
 					...trade_data,
-					status: "completed",
+					status: "accepted",
 				},
 			},
 		];
