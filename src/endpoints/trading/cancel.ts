@@ -32,7 +32,10 @@ export default async function (
 			200,
 			{
 				status: "OK",
-				message: `Trade ${user_role === "initiator" ? "canceled" : "declined"} successfully`,
+				trade: {
+					...trade,
+					status: user_role === "initiator" ? "canceled" : "declined",
+				},
 			},
 		];
 	} catch (error) {
