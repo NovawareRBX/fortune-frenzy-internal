@@ -5,10 +5,10 @@ import query from "./smartQuery";
 export default async function getUserInfo(
 	connection: PoolConnection,
 	userIds: string[],
-): Promise<Array<{ id: string; username: string | null; display_name: string | null }>> {
+): Promise<Array<{ id: string; username: string; display_name: string }>> {
 	const redis = await getRedisConnection();
 	const cached_results = await redis.mGet(userIds.map((id) => `userInfo:${id}`));
-	const results: Array<{ id: string; username: string | null; display_name: string | null }> = [];
+	const results: Array<{ id: string; username: string; display_name: string }> = [];
 	const uncached_user_ids: string[] = [];
 
 	userIds.forEach((userId, index) => {

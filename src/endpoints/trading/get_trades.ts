@@ -3,6 +3,7 @@ import { getMariaConnection } from "../../service/mariadb";
 import { Trade, TradeItem } from "../../types/Endpoints";
 import smartQuery from "../../utilities/smartQuery";
 import getUserInfo from "../../utilities/getUserInfo";
+import getItemString from "../../utilities/getItemString";
 
 export default async function get_trades_by_user_ids(
 	request: FastifyRequest<{ Params: { user_ids: string } }>,
@@ -25,7 +26,9 @@ export default async function get_trades_by_user_ids(
 
 		const trades = await smartQuery<Trade[]>(
 			connection,
-			`SELECT * FROM trades WHERE (initiator_user_id IN (?) OR receiver_user_id IN (?)) AND updated_at >= NOW() - INTERVAL 2 WEEK;`,
+			`SELECT * FROM trades
+       WHERE (initiator_user_id IN (?) OR receiver_user_id IN (?))
+       AND updated_at >= NOW() - INTERVAL 2 WEEK;`,
 			[user_ids_array, user_ids_array],
 		);
 
@@ -33,8 +36,9 @@ export default async function get_trades_by_user_ids(
 			return [200, { status: "OK", trades: [] }];
 		}
 
-		const trade_ids = trades.map((trade) => trade.trade_id);
+		const trade_ids = trades.map((t) => t.trade_id);
 		let trade_items: TradeItem[] = [];
+
 		if (trade_ids.length > 0) {
 			trade_items = await smartQuery<TradeItem[]>(connection, `SELECT * FROM trade_items WHERE trade_id IN (?)`, [
 				trade_ids,
@@ -49,68 +53,78 @@ export default async function get_trades_by_user_ids(
 
 		const relevant_user_ids = new Set<string>();
 		for (const trade of trades) {
-			relevant_user_ids.add(trade.initiator_user_id.toString());
-			relevant_user_ids.add(trade.receiver_user_id.toString());
+			relevant_user_ids.add(trade.initiator_user_id);
+			relevant_user_ids.add(trade.receiver_user_id);
 		}
 
-		const relevant_user_ids_array = Array.from(relevant_user_ids);
-		const user_infos = await getUserInfo(
+		const user_info_records = await getUserInfo(
 			connection,
-			relevant_user_ids_array.map((id) => id.toString()),
+			Array.from(relevant_user_ids).map((id) => id.toString()),
 		);
 
-		const user_info_map = user_infos.reduce<
-			Record<
-				string,
-				Omit<
-					{
-						id: number;
-						username: string;
-						display_name: string;
-					},
-					"id"
-				>
-			>
-		>((acc, { id, username, display_name }) => {
-			acc[id] = { username: username ?? "", display_name: display_name ?? "" };
-			return acc;
-		}, {});
+		const user_info_map = user_info_records.reduce<Record<string, { username: string; display_name: string }>>(
+			(acc, { id, username, display_name }) => {
+				acc[id] = {
+					username: username ?? "",
+					display_name: display_name ?? "",
+				};
+				return acc;
+			},
+			{},
+		);
 
 		const UNKNOWN = "Unknown";
-		const formatted_trades = trades.map((trade) => {
-			const items_for_this_trade = trade_items_map[trade.trade_id] || [];
-			const initiator_items = items_for_this_trade.filter((item) => item.user_id === trade.initiator_user_id);
-			const receiver_items = items_for_this_trade.filter((item) => item.user_id === trade.receiver_user_id);
 
-			const initiator_info = user_info_map[trade.initiator_user_id.toString()] || {
-				username: UNKNOWN,
-				display_name: UNKNOWN,
-			};
-			const receiver_info = user_info_map[trade.receiver_user_id.toString()] || {
-				username: UNKNOWN,
-				display_name: UNKNOWN,
-			};
+		const getSafeUserInfo = (userId: string) => {
+			return (
+				user_info_map[userId] || {
+					username: UNKNOWN,
+					display_name: UNKNOWN,
+				}
+			);
+		};
 
-			return {
-				trade_id: trade.trade_id,
-				initiator: {
-					user_id: trade.initiator_user_id,
-					username: initiator_info.username,
-					display_name: initiator_info.display_name,
-					items: initiator_items.map((item) => item.item_uaid),
-				},
-				receiver: {
-					user_id: trade.receiver_user_id,
-					username: receiver_info.username,
-					display_name: receiver_info.display_name,
-					items: receiver_items.map((item) => item.item_uaid),
-				},
-				status: trade.status,
-				created_at: new Date(trade.created_at),
-				updated_at: new Date(trade.updated_at),
-				transfer_id: trade.transfer_id,
-			};
-		});
+		const getItemsString = (items: TradeItem[]) => {
+			return getItemString(
+				connection,
+				items.map((i) => i.item_uaid),
+			);
+		};
+
+		const formatted_trades = await Promise.all(
+			trades.map(async (trade) => {
+				const items_for_this_trade = trade_items_map[trade.trade_id] || [];
+				const initiator_items = items_for_this_trade.filter((item) => item.user_id === trade.initiator_user_id);
+				const receiver_items = items_for_this_trade.filter((item) => item.user_id === trade.receiver_user_id);
+				const initiator_info = getSafeUserInfo(trade.initiator_user_id);
+				const receiver_info = getSafeUserInfo(trade.receiver_user_id);
+
+				const [initiator_items_string, receiver_items_string] = await Promise.all([
+					getItemsString(initiator_items),
+					getItemsString(receiver_items),
+				]);
+
+				return {
+					trade_id: trade.trade_id,
+					initiator: {
+						user_id: trade.initiator_user_id,
+						username: initiator_info.username,
+						display_name: initiator_info.display_name,
+						items: initiator_items_string,
+					},
+					receiver: {
+						user_id: trade.receiver_user_id,
+						username: receiver_info.username,
+						display_name: receiver_info.display_name,
+						items: receiver_items_string,
+					},
+					status: trade.status,
+					created_at: new Date(trade.created_at),
+					updated_at: new Date(trade.updated_at),
+					transfer_id: trade.transfer_id,
+				};
+			}),
+		);
 
 		return [200, { status: "OK", trades: formatted_trades }];
 	} catch (error) {

@@ -28,7 +28,7 @@ export default async function (connection: PoolConnection, uaids: string[]): Pro
 		items.forEach((item) => {
 			const value = `${item.user_asset_id}:${item.item_id}`;
 			results.push(value);
-			redis_multi.set(`itemCopy:${item.user_asset_id}`, value, { EX: 600 });
+			redis_multi.set(`itemCopy:${item.user_asset_id}`, value, { EX: 3600 * 2 });
 		});
 
 		await redis_multi.exec();

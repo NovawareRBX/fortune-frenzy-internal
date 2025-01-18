@@ -3,6 +3,7 @@ import { getMariaConnection } from "../../service/mariadb";
 import { Trade, TradeItem } from "../../types/Endpoints";
 import smartQuery from "../../utilities/smartQuery";
 import doSelfHttpRequest from "../../utilities/doSelfHttpRequest";
+import getUserInfo from "../../utilities/getUserInfo";
 
 export default async function (
 	request: FastifyRequest<{
@@ -122,6 +123,20 @@ export default async function (
 			values.flat(),
 		);
 
+		const relevant_user_ids_array = [initiator_id, receiver_id];
+		const user_info_map = (await getUserInfo(connection, relevant_user_ids_array)).reduce<
+			Record<
+				string,
+				{
+					username: string;
+					display_name: string;
+				}
+			>
+		>((acc, { id, username, display_name }) => {
+			acc[id] = { username: username ?? "", display_name: display_name ?? "" };
+			return acc;
+		}, {});
+
 		await connection.commit();
 		return [
 			200,
@@ -131,10 +146,14 @@ export default async function (
 					trade_id,
 					initiator: {
 						user_id: initiator_id,
+						username: user_info_map[initiator_id].username,
+						display_name: user_info_map[initiator_id].display_name,
 						items: initiator_items,
 					},
 					receiver: {
 						user_id: receiver_id,
+						username: user_info_map[receiver_id].username,
+						display_name: user_info_map[receiver_id].display_name,
 						items: receiver_items,
 					},
 					status: row.status,
