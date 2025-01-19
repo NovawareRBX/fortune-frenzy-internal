@@ -84,7 +84,7 @@ export default async function get_trades_by_user_ids(
 			);
 		};
 
-		const getItemsString = (items: TradeItem[]) => {
+		const getItemsString = async (items: TradeItem[]) => {
 			return getItemString(
 				connection,
 				items.map((i) => i.item_uaid),
