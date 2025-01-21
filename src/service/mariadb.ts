@@ -11,6 +11,7 @@ function initalise(): void {
 		database: "Game1",
 		connectionLimit: 50,
 		autoJsonMap: true,
+		keepAliveDelay: 60000,
 	});
 }
 

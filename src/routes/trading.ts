@@ -5,6 +5,7 @@ import { registerRoutes } from "../utilities/routeHandler";
 import get_trades from "../endpoints/trading/get_trades";
 import create from "../endpoints/trading/create";
 import accept from "../endpoints/trading/accept";
+import cancel from "../endpoints/trading/cancel";
 
 const endpoints: Endpoint[] = [
 	{
@@ -42,6 +43,19 @@ const endpoints: Endpoint[] = [
 			}>,
 		) => {
 			return await accept(request);
+		},
+	},
+	{
+		method: "POST",
+		url: "/trades/cancel/:trade_id",
+		authType: "server_key",
+		callback: async (
+			request: FastifyRequest<{
+				Params: { trade_id: string };
+				Body: { user_role: "initiator" | "receiver" };
+			}>,
+		) => {
+			return await cancel(request);
 		},
 	},
 ];

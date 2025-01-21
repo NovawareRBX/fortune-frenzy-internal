@@ -48,10 +48,7 @@ export default async function (
 			200,
 			{
 				status: "OK",
-				trade: {
-					...trade_data,
-					status: "accepted",
-				},
+				tradeStatus: "accepted",
 			},
 		];
 	} catch (error) {

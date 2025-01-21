@@ -24,7 +24,7 @@ export default async function (
 		if (trade.status !== "pending") return [400, { error: "Trade is not active" }];
 
 		await smartQuery(connection, "UPDATE trades SET status = ? WHERE trade_id = ?", [
-			user_role === "initiator" ? "canceled" : "declined",
+			user_role === "initiator" ? "cancelled" : "declined",
 			trade_id,
 		]);
 
@@ -32,10 +32,7 @@ export default async function (
 			200,
 			{
 				status: "OK",
-				trade: {
-					...trade,
-					status: user_role === "initiator" ? "canceled" : "declined",
-				},
+				tradeStatus: user_role === "initiator" ? "cancelled" : "declined",
 			},
 		];
 	} catch (error) {
