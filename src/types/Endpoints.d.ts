@@ -3,20 +3,20 @@ import { FastifyRequest, FastifyReply, HTTPMethods, FastifySchema } from "fastif
 export type AuthType = "none" | "server_key" | "master_key";
 
 export interface Endpoint<Params = any, Body = any, Query = any, Headers = any> {
-    method: HTTPMethods; // Defines the HTTP method (GET, POST, etc.)
-    url: string; // The URL path for the endpoint
-    authType: AuthType; // Custom type for authentication type
-    requiredHeaders?: string[]; // Optional list of required headers
-    schema?: FastifySchema; // Optional schema for validation
-    callback: (
-        request: FastifyRequest<{
-            Params: Params;
-            Body: Body;
-            Querystring: Query; // Fixed: Use `Querystring` as per Fastify convention
-            Headers: Headers;
-        }>,
-        reply: FastifyReply,
-    ) => Promise<[status: number, data: any]>; // Ensures a tuple is returned with status and data
+	method: HTTPMethods; // Defines the HTTP method (GET, POST, etc.)
+	url: string; // The URL path for the endpoint
+	authType: AuthType; // Custom type for authentication type
+	requiredHeaders?: string[]; // Optional list of required headers
+	schema?: FastifySchema; // Optional schema for validation
+	callback: (
+		request: FastifyRequest<{
+			Params: Params;
+			Body: Body;
+			Querystring: Query; // Fixed: Use `Querystring` as per Fastify convention
+			Headers: Headers;
+		}>,
+		reply: FastifyReply,
+	) => Promise<[status: number, data: any]>; // Ensures a tuple is returned with status and data
 }
 
 export interface ItemListing {
@@ -28,7 +28,7 @@ export interface ItemListing {
 	price: string;
 	item_id: string;
 	username?: string;
-	displayName?: string;
+	display_name?: string;
 }
 
 export interface ItemCase {
@@ -49,17 +49,17 @@ export interface ItemCase {
 }
 
 export interface Trade {
-	trade_id: number,
-	initiator_user_id: string,
-	receiver_user_id: string,
-	status: "pending" | "accepted" | "cancelled" | "completed",
-	created_at: string,
-	updated_at: string,
-	transfer_id
+	trade_id: number;
+	initiator_user_id: string;
+	receiver_user_id: string;
+	status: "pending" | "accepted" | "cancelled" | "completed";
+	created_at: string;
+	updated_at: string;
+	transfer_id;
 }
 
 export interface TradeItem {
-	item_uaid: string,
-	trade_id: number,
-	user_id: string,
+	item_uaid: string;
+	trade_id: number;
+	user_id: string;
 }

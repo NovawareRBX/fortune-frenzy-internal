@@ -9,6 +9,7 @@ export default async function (
 			display_name: string;
 			total_cash_earned: number;
 			total_cash_spent: number;
+			current_cash: number;
 			win_rate: number;
 			biggest_win: number;
 			total_plays: number;
@@ -24,6 +25,7 @@ export default async function (
 	if (
 		!request.body ||
 		!Array.isArray(request.body) ||
+		request.body.length === 0 ||
 		!request.body.every(
 			(user) =>
 				typeof user.user_id === "string" &&
@@ -31,6 +33,7 @@ export default async function (
 				typeof user.display_name === "string" &&
 				typeof user.total_cash_earned === "number" &&
 				typeof user.total_cash_spent === "number" &&
+				typeof user.current_cash === "number" &&
 				typeof user.win_rate === "number" &&
 				typeof user.biggest_win === "number" &&
 				typeof user.total_plays === "number" &&
@@ -54,7 +57,7 @@ export default async function (
 
 	try {
 		const users = request.body;
-		const placeholders = users.map(() => "(?, ?, ?, ?)").join(", ");
+		const placeholders = users.map(() => "(?, ?, ?, ?, ?)").join(", ");
 		const values: any[] = [];
 		const recent_activity_values: any[] = [];
 
@@ -69,7 +72,7 @@ export default async function (
 				time_played: u.time_played,
 			};
 
-			values.push(u.user_id, u.name, u.display_name, JSON.stringify(stats));
+			values.push(u.user_id, u.name, u.display_name, JSON.stringify(stats), u.current_cash);
 
 			u.recent_activity.forEach((activity) => {
 				recent_activity_values.push(u.user_id, activity.icon, activity.text);
@@ -77,33 +80,31 @@ export default async function (
 		});
 
 		await connection.query(
-			`
-		  INSERT INTO users (user_id, name, displayName, statistics)
-		  VALUES ${placeholders}
-		  ON DUPLICATE KEY UPDATE
-			name = VALUES(name),
-			displayName = VALUES(displayName),
-			statistics = VALUES(statistics)
-		`,
+			`INSERT INTO users (user_id, name, display_name, statistics, current_cash)
+			 VALUES ${placeholders}
+			 ON DUPLICATE KEY UPDATE
+				 name = VALUES(name),
+				 display_name = VALUES(display_name),
+				 statistics = VALUES(statistics),
+				 current_cash = VALUES(current_cash)`,
 			values,
 		);
 
 		if (recent_activity_values.length > 0) {
-			const raPlaceholders = [];
-			for (let i = 0; i < recent_activity_values.length; i += 3) {
-				raPlaceholders.push("(?, ?, ?)");
-			}
+			const raPlaceholders = Array(Math.floor(recent_activity_values.length / 3))
+				.fill("(?, ?, ?)")
+				.join(", ");
 
 			await connection.query(
 				`INSERT INTO recent_game_activity (user_id, image, text)
-			   VALUES ${raPlaceholders.join(", ")}`,
+				 VALUES ${raPlaceholders}`,
 				recent_activity_values,
 			);
 		}
 
 		return [200, { status: "OK" }];
 	} catch (error) {
-		console.error(error);
+		console.error("Database operation failed:", error);
 		return [500, { error: "Internal Server Error" }];
 	} finally {
 		await connection.release();

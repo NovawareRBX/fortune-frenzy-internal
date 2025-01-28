@@ -11,8 +11,8 @@ export default async function (request: FastifyRequest<{ Params: { id?: string }
 
 	try {
 		const query = request.params?.id
-			? "SELECT il.*, u.name AS username, u.displayName FROM item_listings il LEFT JOIN users u ON il.seller_id = u.user_id WHERE il.item_id = ? AND (il.expires_at > NOW() OR il.expires_at IS NULL);"
-			: "SELECT il.*, u.name AS username, u.displayName FROM item_listings il LEFT JOIN users u ON il.seller_id = u.user_id WHERE il.expires_at > NOW() OR il.expires_at IS NULL;";
+			? "SELECT il.*, u.name AS username, u.display_name FROM item_listings il LEFT JOIN users u ON il.seller_id = u.user_id WHERE il.item_id = ? AND (il.expires_at > NOW() OR il.expires_at IS NULL);"
+			: "SELECT il.*, u.name AS username, u.display_name FROM item_listings il LEFT JOIN users u ON il.seller_id = u.user_id WHERE il.expires_at > NOW() OR il.expires_at IS NULL;";
 
 		const listings = await smartQuery<ItemListing[]>(
 			connection,

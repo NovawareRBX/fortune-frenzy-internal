@@ -8,6 +8,8 @@ import add_cash from "../endpoints/users/add_cash";
 import get_cash_changes from "../endpoints/users/get_cash_changes";
 import user_count from "../endpoints/users/user_count";
 import update_users from "../endpoints/users/update_users";
+import get_leaderboard from "../endpoints/users/get_leaderboard";
+import get_user from "../endpoints/users/get_user";
 
 const endpoints: Endpoint[] = [
 	{
@@ -15,9 +17,17 @@ const endpoints: Endpoint[] = [
 		url: "/users/:id",
 		authType: "server_key",
 		callback: async (
-			request: FastifyRequest<{ Params: { id: string }; Body: { name?: string; displayName?: string } }>,
+			request: FastifyRequest<{ Params: { id: string }; Body: { name?: string; display_name?: string } }>,
 		) => {
 			return await post_user(request);
+		},
+	},
+	{
+		method: "GET",
+		url: "/users/:id",
+		authType: "none",
+		callback: async (request: FastifyRequest<{ Params: { id: string } }>) => {
+			return await get_user(request);
 		},
 	},
 	{
@@ -32,6 +42,7 @@ const endpoints: Endpoint[] = [
 					display_name: string;
 					total_cash_earned: number;
 					total_cash_spent: number;
+					current_cash: number;
 					win_rate: number;
 					biggest_win: number;
 					total_plays: number;
@@ -77,6 +88,14 @@ const endpoints: Endpoint[] = [
 		authType: "none",
 		callback: async (request: FastifyRequest) => {
 			return await user_count(request);
+		},
+	},
+	{
+		method: "GET",
+		url: "/users/leaderboard/:type",
+		authType: "none",
+		callback: async (request: FastifyRequest<{ Params: { type: string }; Querystring: { limit?: string } }>) => {
+			return await get_leaderboard(request);
 		},
 	},
 ];

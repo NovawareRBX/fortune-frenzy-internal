@@ -4,7 +4,7 @@ import smartQuery from "../../utilities/smartQuery";
 import discordLog from "../../utilities/discordLog";
 
 export default async function (
-	request: FastifyRequest<{ Params: { id: string }; Body: { name?: string; displayName?: string } }>,
+	request: FastifyRequest<{ Params: { id: string }; Body: { name?: string; display_name?: string } }>,
 ): Promise<[number, any]> {
 	const connection = await getMariaConnection();
 	if (!connection) {
@@ -12,15 +12,15 @@ export default async function (
 	}
 
 	try {
-		const { name = "Unknown", displayName = "Unknown" } = request.body;
+		const { name = "Unknown", display_name = "Unknown" } = request.body;
 		const user_id = request.params.id;
 
 		if (typeof name !== "string" || name.trim() === "") {
 			return [400, { error: "Invalid 'name' provided" }];
 		}
 
-		if (typeof displayName !== "string" || displayName.trim() === "") {
-			return [400, { error: "Invalid 'displayName' provided" }];
+		if (typeof display_name !== "string" || display_name.trim() === "") {
+			return [400, { error: "Invalid 'display_name' provided" }];
 		}
 
 		if (typeof user_id !== "string" || user_id.trim() === "") {
@@ -29,18 +29,18 @@ export default async function (
 
 		await connection.query(
 			`
-            INSERT INTO users (user_id, name, displayName) 
+            INSERT INTO users (user_id, name, display_name) 
             VALUES (?, ?, ?)
             ON DUPLICATE KEY UPDATE 
               name = VALUES(name), 
-              displayName = VALUES(displayName)
+              display_name = VALUES(display_name)
             `,
-			[user_id, name, displayName],
+			[user_id, name, display_name],
 		);
 
 		const [result] = await smartQuery(connection, "SELECT * FROM users WHERE user_id = ?", [user_id]);
 
-		discordLog("Log", "User Updated", `Updated user ${user_id} with name ${name} and displayName ${displayName}`);
+		discordLog("Log", "User Updated", `Updated user ${user_id} with name ${name} and display_name ${display_name}`);
 
 		return [
 			200,

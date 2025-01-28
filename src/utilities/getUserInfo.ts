@@ -21,16 +21,16 @@ export default async function getUserInfo(
 	});
 
 	if (uncached_user_ids.length > 0) {
-		const users = await query<Array<{ user_id: string; name: string; displayName: string }>>(
+		const users = await query<Array<{ user_id: string; name: string; display_name: string }>>(
 			connection,
-			"SELECT user_id, name, displayName FROM users WHERE user_id IN (?)",
+			"SELECT user_id, name, display_name FROM users WHERE user_id IN (?)",
 			[uncached_user_ids],
 		);
 
 		const redis_multi = redis.multi();
 		users.forEach((user) => {
-			const value = `${user.name}:${user.displayName}`;
-			results.push({ id: user.user_id, username: user.name, display_name: user.displayName });
+			const value = `${user.name}:${user.display_name}`;
+			results.push({ id: user.user_id, username: user.name, display_name: user.display_name });
 			redis_multi.set(`userInfo:${user.user_id}`, value, { EX: 600 }); // Cache for 10 minutes
 		});
 

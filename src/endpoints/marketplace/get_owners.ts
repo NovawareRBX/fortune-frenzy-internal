@@ -11,7 +11,7 @@ export default async function (request: FastifyRequest<{ Params: { id: string } 
 	try {
 		const owners = await smartQuery(
 			connection,
-			"SELECT i.*, u.name AS username, u.displayName FROM item_copies i LEFT JOIN users u ON i.owner_id = u.user_id WHERE i.item_id = ?;",
+			"SELECT i.*, u.name AS username, u.display_name FROM item_copies i LEFT JOIN users u ON i.owner_id = u.user_id WHERE i.item_id = ?;",
 			[request.params.id],
 		);
 
