@@ -8,7 +8,6 @@ import list_item from "../endpoints/marketplace/list_item";
 import get_listings from "../endpoints/marketplace/get_listings";
 import get_owners from "../endpoints/marketplace/get_owners";
 import buy_uaid from "../endpoints/marketplace/buy_uaid";
-import buy_new_copy from "../endpoints/marketplace/buy_new_copy";
 
 const endpoints: Endpoint[] = [
 	{
@@ -41,14 +40,6 @@ const endpoints: Endpoint[] = [
 		authType: "none",
 		callback: async (request: FastifyRequest<{ Params: { id: string } }>) => {
 			return await get_owners(request);
-		},
-	},
-	{
-		method: "POST",
-		url: "/marketplace/items/:id/buy",
-		authType: "server_key",
-		callback: async (request: FastifyRequest<{ Params: { id: string } }>) => {
-			return await buy_new_copy(request);
 		},
 	},
 	{
