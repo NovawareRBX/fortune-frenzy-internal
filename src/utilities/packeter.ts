@@ -5,6 +5,8 @@ export async function packeter(server: FastifyInstance, server_id: string, packe
 	const redis = await getRedisConnection();
 	packet.forEach((element) => {
 		(async () => {
+			console.log(`Starting request ${element.request_id} for server ${server_id}`);
+
 			const route_str = element.route;
 			const route = server.findRoute({
 				url: route_str,
@@ -24,6 +26,7 @@ export async function packeter(server: FastifyInstance, server_id: string, packe
 			}
 
 			try {
+				console.log(`Sending request ${element.request_id} for server ${server_id}`);
 				const response = await server.inject({
 					method: element.method,
 					url: route_str,
@@ -34,6 +37,8 @@ export async function packeter(server: FastifyInstance, server_id: string, packe
 						"packeter-master-key": process.env.PACKETER_BYPASS_KEY,
 					},
 				});
+
+				console.log(`Received response for request ${element.request_id} for server ${server_id}`);
 
 				const request_id = element.request_id;
 				const response_packet = {
@@ -60,7 +65,7 @@ export async function packeter(server: FastifyInstance, server_id: string, packe
 		redis.set(`servers:${server_id}:active`, "true", { EX: 1 }),
 		redis.set(`servers:${server_id}:last_packet`, JSON.stringify(packet), { EX: 1 }),
 	]);
-	
+
 	const responses = await redis.hGetAll(`packet:${server_id}`);
 
 	const responses_object = Object.keys(responses).reduce((acc: { [key: string]: any }, key: string) => {
@@ -68,7 +73,9 @@ export async function packeter(server: FastifyInstance, server_id: string, packe
 		return acc;
 	}, {});
 
-	await redis.del(`packet:${server_id}`);
+	Object.keys(responses_object).forEach((key) => {
+		redis.hDel(`packet:${server_id}`, key);
+	});
 
 	return [
 		200,

@@ -4,7 +4,7 @@ import { packeter } from "../../utilities/packeter";
 export default async function (
     request: FastifyRequest<{ Params: { server_id: string }; Body: { Packet: string } }>,
 ): Promise<[number, any]> {
-    console.log(request.body.Packet);
+    // console.log(request.body.Packet);
 
     return await packeter(
         request.server,
