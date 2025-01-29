@@ -15,6 +15,7 @@ export default async function (
 			total_plays: number;
 			favourite_mode: string;
 			time_played: number;
+			xp: number;
 			recent_activity: {
 				text: string;
 				icon: string;
@@ -37,10 +38,9 @@ export default async function (
 				typeof user.win_rate === "number" &&
 				typeof user.biggest_win === "number" &&
 				typeof user.total_plays === "number" &&
-				Number.isInteger(user.total_plays) &&
 				typeof user.favourite_mode === "string" &&
 				typeof user.time_played === "number" &&
-				user.time_played >= 0 &&
+				typeof user.xp === "number" &&
 				Array.isArray(user.recent_activity) &&
 				user.recent_activity.every(
 					(activity) => typeof activity.text === "string" && typeof activity.icon === "string",
@@ -70,6 +70,7 @@ export default async function (
 				total_plays: u.total_plays,
 				favourite_mode: u.favourite_mode,
 				time_played: u.time_played,
+				xp: u.xp,
 			};
 
 			values.push(u.user_id, u.name, u.display_name, JSON.stringify(stats), u.current_cash);
