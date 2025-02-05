@@ -57,6 +57,8 @@ export default async function (
 		if (response.statusCode !== 200) {
 			coinflip.status = "failed";
 			await redis.set(`coinflip:${id}`, JSON.stringify(coinflip), { EX: 10 });
+			await redis.del(`coinflip:${id}:user:${coinflip.player1.id}`);
+			await redis.del(`coinflip:${id}:user:${coinflip.player2.id}`);
 			return [500, { error: "Item transfer failed" }];
 		}
 
@@ -79,8 +81,6 @@ export default async function (
 		await redis.set(`coinflip:${id}`, JSON.stringify(coinflip), { EX: 40 });
 		await redis.del(`coinflip:${id}:user:${coinflip.player1.id}`);
 		await redis.del(`coinflip:${id}:user:${coinflip.player2.id}`);
-		// await redis.sRem(`coinflips:global`, id);
-		// await redis.sRem(`coinflips:server:${coinflip.server_id}`, id);
 
 		doSelfHttpRequest(request, {
 			method: "POST",
@@ -124,7 +124,11 @@ export default async function (
 			},
 		];
 	} catch (error) {
-		discordLog("EmergencyWakeTheFuckUpNow", "Failed to start coinflip", `Failed to process coinflip ${id} with error: ${error}`);
+		discordLog(
+			"EmergencyWakeTheFuckUpNow",
+			"Failed to start coinflip",
+			`Failed to process coinflip ${id} with error: ${error}`,
+		);
 		console.error("Failed to process coinflip:", error);
 		return [500, { error: "Internal Server Error" }];
 	}

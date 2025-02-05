@@ -13,7 +13,6 @@ export default async function (request: FastifyRequest): Promise<[number, any]> 
 	}
 
     try {
-        // first check if the total count is cached
         const cachedCount = await redis.get("total_user_count");
         if (cachedCount) {
             return [200, { count: cachedCount }];

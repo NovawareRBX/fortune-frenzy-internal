@@ -7,6 +7,7 @@ import packet from "../endpoints/index/packet";
 import register_server from "../endpoints/index/register_server";
 import settings from "../endpoints/index/settings";
 import server_info from "../endpoints/index/server_info";
+import roblox_network_log from "../endpoints/index/roblox_network_log";
 
 const endpoints: Endpoint[] = [
 	{
@@ -47,6 +48,24 @@ const endpoints: Endpoint[] = [
 		authType: "none",
 		callback: async (request: FastifyRequest<{ Params: { game_id: string } }>) => {
 			return await settings(request);
+		},
+	},
+	{
+		method: "POST",
+		url: "/logging/network",
+		authType: "server_key",
+		callback: async (request: FastifyRequest<{
+			Body: {
+				server_id: string;
+				logs: {
+					network_name: string;
+					speed: number;
+					response: string;
+					player: { name: string; id: number };
+				}[];
+			};
+		}>) => {
+			return await roblox_network_log(request);
 		},
 	}
 ];

@@ -4,19 +4,14 @@ import { getRedisConnection } from "../../service/redis";
 import { randomBytes } from "crypto";
 import getItemString from "../../utilities/getItemString";
 import getUserInfo from "../../utilities/getUserInfo";
-import discordLog from "../../utilities/discordLog";
 
 export default async function (
 	request: FastifyRequest<{
 		Params: { server_id: string };
-		Body: {
-			user_id: Number;
-			items: Array<string>;
-			coin: 1 | 2;
-			type: "server" | "global" | "friends";
-		};
+		Body: { user_id: Number; items: Array<string>; coin: 1 | 2; type: "server" | "global" | "friends" };
 	}>,
 ): Promise<[number, any]> {
+	// basic validation
 	if (
 		!request.body ||
 		typeof request.body.user_id !== "number" ||
@@ -27,7 +22,7 @@ export default async function (
 		typeof request.params.server_id !== "string" ||
 		request.params.server_id.length < 1
 	) {
-		return [400, { error: "Invalid request" }];
+		return [400, { error: "invalid request" }];
 	}
 
 	const server_id = request.params.server_id;
@@ -37,33 +32,21 @@ export default async function (
 
 	const redis = await getRedisConnection();
 	const connection = await getMariaConnection();
-
-	if (!connection) {
-		return [500, { error: "Failed to connect to the database" }];
-	}
+	if (!connection) return [500, { error: "failed to connect to the database" }];
 
 	try {
 		const confirmed_items = await connection.query(
 			"SELECT user_asset_id FROM item_copies WHERE user_asset_id IN (?) AND owner_id = ?",
 			[items, user_id],
 		);
-
-		if (confirmed_items.length !== items.length) {
-			return [400, { error: "Invalid items" }];
-		}
-
+		if (confirmed_items.length !== items.length) return [400, { error: "invalid items" }];
 		const active_coinflips = await redis.keys(`coinflip:*:user:${user_id}`);
-		if (active_coinflips.length > 0) {
-			return [400, { error: "Active coinflip already exists" }];
-		}
+		if (active_coinflips.length > 0) return [400, { error: "active coinflip already exists" }];
 
-		// const total_coinflips = await redis.sCard("coinflips:global");
-		// if (total_coinflips >= 300) {
-		// 	return [400, { error: "Too many active coinflips" }];
-		// }
-
+		const lockKey = `coinflip:lock:user:${user_id}`;
+		const lockAcquired = await redis.set(lockKey, "active", { NX: true, EX: 3600 });
+		if (!lockAcquired) return [400, { error: "Already creating a coinflip" }];
 		const coinflip_id = randomBytes(20).toString("base64").replace(/[+/=]/g, "").substring(0, 20);
-
 		const [user_info] = await getUserInfo(connection, [user_id.toString()]);
 		const item_ids_string = await getItemString(connection, items);
 
@@ -82,15 +65,12 @@ export default async function (
 
 		await redis
 			.multi()
-			.set(`coinflip:${coinflip_id}`, JSON.stringify(coinflip_data), {
-				EX: 3600,
-			})
+			.set(`coinflip:${coinflip_id}`, JSON.stringify(coinflip_data), { EX: 3600 })
 			.sAdd(`coinflips:server:${server_id}`, coinflip_id)
 			.sAdd("coinflips:global", coinflip_id)
 			.set(`coinflip:${coinflip_id}:user:${user_id}`, "active", { EX: 3600 })
 			.exec();
-
-		discordLog("Log", "Coinflip Created", `Coinflip ${coinflip_id} has been created`);
+		await redis.del(lockKey);
 
 		return [
 			200,
@@ -100,8 +80,7 @@ export default async function (
 			},
 		];
 	} catch (error) {
-		discordLog("Warning", "Failed to create coinflip", `Failed to create coinflip with error: ${error}`);
-		return [500, { error: "Failed to create coinflip" }];
+		return [500, { error: "failed to create coinflip" }];
 	} finally {
 		connection.release();
 	}

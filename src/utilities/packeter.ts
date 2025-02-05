@@ -5,7 +5,7 @@ export async function packeter(server: FastifyInstance, server_id: string, packe
 	const redis = await getRedisConnection();
 	packet.forEach((element) => {
 		(async () => {
-			console.log(`Starting request ${element.request_id} for server ${server_id}`);
+			// console.log(`Starting request ${element.request_id} for server ${server_id}`);
 
 			const route_str = element.route;
 			const route = server.findRoute({
@@ -26,7 +26,7 @@ export async function packeter(server: FastifyInstance, server_id: string, packe
 			}
 
 			try {
-				console.log(`Sending request ${element.request_id} for server ${server_id}`);
+				// console.log(`Sending request ${element.request_id} for server ${server_id}`);
 				const response = await server.inject({
 					method: element.method,
 					url: route_str,
@@ -38,7 +38,7 @@ export async function packeter(server: FastifyInstance, server_id: string, packe
 					},
 				});
 
-				console.log(`Received response for request ${element.request_id} for server ${server_id}`);
+				// console.log(`Received response for request ${element.request_id} for server ${server_id}`);
 
 				const request_id = element.request_id;
 				const response_packet = {

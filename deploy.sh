@@ -1,0 +1,66 @@
+#!/bin/bash
+
+green='\033[0;32m'
+blue='\033[0;34m'
+magenta='\033[1;35m'
+yellow='\033[1;33m'
+red='\033[0;31m'
+cyan='\033[0;36m'
+nc='\033[0m'
+
+colored_echo() {
+  local color="$1"
+  shift
+  echo -e "${color}$*${nc}"
+}
+
+run() {
+  "$@" > /dev/null 2>&1
+}
+
+colored_echo "$green" "STARTING DEPLOYMENT..."
+
+current_port=$(grep -oP 'proxy_pass http://127\.0\.0\.1:\K[0-9]+' /etc/nginx/sites-available/nova-api)
+
+if [ "$current_port" == "3000" ]; then
+  new_port="3002"
+else
+  new_port="3000"
+fi
+
+colored_echo "$blue" "CURRENT PORT: $current_port"
+colored_echo "$blue" "NEW PORT: $new_port"
+colored_echo "$yellow" "Compiling and building the image..."
+
+run npm run build
+run docker build -t ff-internal-new .
+
+old_container=$(docker ps -q --filter "publish=${new_port}" --filter "ancestor=ff-internal" --filter "network=APIs")
+if [ -n "$old_container" ]; then
+  colored_echo "$red" "Removing current container..."
+  run docker stop $old_container
+  run docker rm $old_container
+fi
+
+run docker run --name FFInternalNew --net APIs -p ${new_port}:3000 -d ff-internal-new
+
+colored_echo "$yellow" "Waiting for the container to start..."
+sleep 5
+
+run sudo sed -i "s/127\.0\.0\.1:$current_port/127.0\.0\.1:${new_port}/g" /etc/nginx/sites-available/nova-api
+run sudo systemctl reload nginx
+
+if docker ps -a --format '{{.Names}}' | grep -q '^FFInternal$'; then
+  colored_echo "$red" "Removing old container..."
+  run docker stop FFInternal
+  run docker rm FFInternal
+fi
+
+if docker images --format '{{.Repository}}:{{.Tag}}' | grep -q '^ff-internal:latest$'; then
+  colored_echo "$red" "Cleaning up images..."
+  run docker rmi ff-internal:latest
+fi
+
+run docker rename FFInternalNew FFInternal
+
+colored_echo "$green" "Deployment Complete!"

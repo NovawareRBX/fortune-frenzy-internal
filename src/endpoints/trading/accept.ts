@@ -37,6 +37,7 @@ export default async function (
 			]);
 
 			if (response.statusCode === 403) return [400, { error: "One or more items owner changed" }];
+
 			return [500, { error: "Item transfer failed" }];
 		}
 

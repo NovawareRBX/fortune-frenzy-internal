@@ -4,6 +4,7 @@ import { Trade, TradeItem } from "../../types/Endpoints";
 import smartQuery from "../../utilities/smartQuery";
 import doSelfHttpRequest from "../../utilities/doSelfHttpRequest";
 import getUserInfo from "../../utilities/getUserInfo";
+import getItemString from "../../utilities/getItemString";
 
 export default async function (
 	request: FastifyRequest<{
@@ -137,6 +138,9 @@ export default async function (
 			return acc;
 		}, {});
 
+		const initiator_items_string = await getItemString(connection, initiator_items);
+		const receiver_items_string = await getItemString(connection, receiver_items);
+
 		await connection.commit();
 		return [
 			200,
@@ -148,13 +152,13 @@ export default async function (
 						user_id: initiator_id,
 						username: user_info_map[initiator_id].username,
 						display_name: user_info_map[initiator_id].display_name,
-						items: initiator_items,
+						items: initiator_items_string,
 					},
 					receiver: {
 						user_id: receiver_id,
 						username: user_info_map[receiver_id].username,
 						display_name: user_info_map[receiver_id].display_name,
-						items: receiver_items,
+						items: receiver_items_string,
 					},
 					status: row.status,
 					created_at: row.created_at,

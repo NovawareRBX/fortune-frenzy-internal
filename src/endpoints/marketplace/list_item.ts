@@ -44,19 +44,16 @@ export default async function handleRequest(
 		}
 
 		const query = `INSERT INTO item_listings (user_asset_id, currency, expires_at, price) 
-                       VALUES (?, "cash", ?, ?)
-                       ON DUPLICATE KEY UPDATE price = VALUES(price), expires_at = VALUES(expires_at);`;
+					   VALUES (?, "cash", ?, ?)
+					   ON DUPLICATE KEY UPDATE price = VALUES(price), expires_at = VALUES(expires_at);`;
 		await connection.query(query, [user_asset_id, expiryTimestamp, price]);
 
 		return [200, { status: "OK" }];
 	} catch (error) {
 		if (error instanceof Error && "sqlMessage" in error) {
-			console.error(error.sqlMessage);
 			if ((error as any).sqlMessage === "No matching owner found for this user_asset_id") {
 				return [404, { error: "user_asset_id not found" }];
 			}
-		} else {
-			console.error(error);
 		}
 
 		return [500, { error: "Internal Server Error" }];

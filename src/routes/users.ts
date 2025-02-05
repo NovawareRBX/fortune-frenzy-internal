@@ -10,6 +10,7 @@ import user_count from "../endpoints/users/user_count";
 import update_users from "../endpoints/users/update_users";
 import get_leaderboard from "../endpoints/users/get_leaderboard";
 import get_user from "../endpoints/users/get_user";
+import search_users from "../endpoints/users/search_users";
 
 const endpoints: Endpoint[] = [
 	{
@@ -48,6 +49,7 @@ const endpoints: Endpoint[] = [
 					total_plays: number;
 					favourite_mode: string;
 					time_played: number;
+					xp: number;
 					recent_activity: {
 						text: string;
 						icon: string;
@@ -96,6 +98,14 @@ const endpoints: Endpoint[] = [
 		authType: "none",
 		callback: async (request: FastifyRequest<{ Params: { type: string }; Querystring: { limit?: string } }>) => {
 			return await get_leaderboard(request);
+		},
+	},
+	{
+		method: "GET",
+		url: "/search/users/",
+		authType: "none",
+		callback: async (request: FastifyRequest<{ Querystring: { keywords?: string } }>) => {
+			return await search_users(request);
 		},
 	},
 ];

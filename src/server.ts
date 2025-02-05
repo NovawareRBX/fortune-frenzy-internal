@@ -40,7 +40,7 @@ if (cluster.isPrimary) {
 
 			await server.listen({ port: 3000, host: "0.0.0.0" });
 
-			console.log(`Worker ${process.pid} is running on port 3001`);
+			console.log(`Worker ${process.pid} is running on port 3000`);
 		} catch (error) {
 			console.log("Error starting server");
 			console.log(error);

@@ -4,21 +4,37 @@ import { randomBytes, createHash } from "crypto";
 import { Endpoint } from "../types/Endpoints";
 import { authorization } from "../middleware/authorization";
 
+async function logRequest(request: FastifyRequest, reply: FastifyReply, payload: unknown) {
+	try {
+		const redis = await getRedisConnection();
+		redis.publish(
+			"http_network_log",
+			Buffer.from(
+				JSON.stringify({
+					url: request.url,
+					method: request.method,
+					response: {
+						status_code: reply.statusCode,
+						payload,
+					},
+				}),
+			),
+		);
+	} catch (error) {}
+}
+
 export async function registerRoutes(fastify: FastifyInstance, endpoints: Endpoint[]) {
 	endpoints.forEach((endpoint) => {
 		const routeOptions: RouteOptions = {
 			method: endpoint.method,
 			url: endpoint.url,
 			handler: async (request: FastifyRequest, reply: FastifyReply) => {
-				const start_time = Date.now();
-
 				const [statusCode, response] = await endpoint.callback(
 					request as FastifyRequest<{ Params: any; Body: any; Querystring: any; Headers: any }>,
 					reply,
 				);
 
-				// console.log(`[API] ${endpoint.method} ${endpoint.url} - ${Date.now() - start_time}ms`);
-
+				logRequest(request, reply, response);
 				reply.code(statusCode).send(response);
 			},
 		};
