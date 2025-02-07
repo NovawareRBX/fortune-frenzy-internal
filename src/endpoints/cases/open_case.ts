@@ -59,12 +59,14 @@ export default async function (
 				status: "OK",
 				result: entry,
 				case: {
-					id: item_case.id,
 					price: item_case.price,
-					ui_data: item_case.ui_data,
 					items: item_case.items,
 					next_rotation: item_case.next_rotation,
-					opened_count: item_case.opened_count,
+					id: item_case.id,
+					ui_data: item_case.ui_data,
+					opened_count: item_case.opened_count + 1,
+					min_value: item_case.min_value,
+					max_value: item_case.max_value,
 				},
 			},
 		];
