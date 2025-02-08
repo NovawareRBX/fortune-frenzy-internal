@@ -11,6 +11,7 @@ import update_users from "../endpoints/users/update_users";
 import get_leaderboard from "../endpoints/users/get_leaderboard";
 import get_user from "../endpoints/users/get_user";
 import search_users from "../endpoints/users/search_users";
+import leaderboard from "../endpoints/users/leaderboard";
 
 const endpoints: Endpoint[] = [
 	{
@@ -44,6 +45,7 @@ const endpoints: Endpoint[] = [
 					total_cash_earned: number;
 					total_cash_spent: number;
 					current_cash: number;
+					current_value: number;
 					win_rate: number;
 					biggest_win: number;
 					total_plays: number;
@@ -102,10 +104,18 @@ const endpoints: Endpoint[] = [
 	},
 	{
 		method: "GET",
-		url: "/search/users/",
+		url: "/search/users",
 		authType: "none",
 		callback: async (request: FastifyRequest<{ Querystring: { keywords?: string } }>) => {
 			return await search_users(request);
+		},
+	},
+	{
+		method: "GET",
+		url: "/leaderboard",
+		authType: "none",
+		callback: async () => {
+			return await leaderboard();
 		},
 	},
 ];

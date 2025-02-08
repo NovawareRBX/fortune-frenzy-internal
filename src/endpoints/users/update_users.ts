@@ -10,6 +10,7 @@ export default async function (
 			total_cash_earned: number;
 			total_cash_spent: number;
 			current_cash: number;
+			current_value: number;
 			win_rate: number;
 			biggest_win: number;
 			total_plays: number;
@@ -35,6 +36,7 @@ export default async function (
 				typeof user.total_cash_earned === "number" &&
 				typeof user.total_cash_spent === "number" &&
 				typeof user.current_cash === "number" &&
+				typeof user.current_value === "number" &&
 				typeof user.win_rate === "number" &&
 				typeof user.biggest_win === "number" &&
 				typeof user.total_plays === "number" &&
@@ -57,7 +59,7 @@ export default async function (
 
 	try {
 		const users = request.body;
-		const placeholders = users.map(() => "(?, ?, ?, ?, ?)").join(", ");
+		const placeholders = users.map(() => "(?, ?, ?, ?, ?, ?)").join(", ");
 		const values: any[] = [];
 		const recent_activity_values: any[] = [];
 		const meiliUsers: any[] = [];
@@ -74,7 +76,7 @@ export default async function (
 				xp: u.xp,
 			};
 
-			values.push(u.user_id, u.name, u.display_name, JSON.stringify(stats), u.current_cash);
+			values.push(u.user_id, u.name, u.display_name, JSON.stringify(stats), u.current_cash, u.current_value);
 
 			u.recent_activity.forEach((activity) => {
 				recent_activity_values.push(u.user_id, activity.icon, activity.text);
@@ -86,18 +88,21 @@ export default async function (
 				name: u.name,
 				display_name: u.display_name,
 				current_cash: u.current_cash,
+				current_value: u.current_value,
 			});
 		});
 
 		// Insert/update users in MariaDB
 		await connection.query(
-			`INSERT INTO users (user_id, name, display_name, statistics, current_cash)
+			`INSERT INTO users (user_id, name, display_name, statistics, current_cash, current_value)
 			 VALUES ${placeholders}
 			 ON DUPLICATE KEY UPDATE
 				 name = VALUES(name),
 				 display_name = VALUES(display_name),
 				 statistics = VALUES(statistics),
-				 current_cash = VALUES(current_cash)`,
+				 current_cash = VALUES(current_cash),
+				 current_value = VALUES(current_value)
+				 `,
 			values,
 		);
 
