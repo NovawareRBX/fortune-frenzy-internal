@@ -6,7 +6,7 @@ import { ItemCase } from "../../types/Endpoints";
 import discordLog from "../../utilities/discordLog";
 
 export default async function (
-	request: FastifyRequest<{ Params: { id: string }; Body: { user_id: string } }>,
+	request: FastifyRequest<{ Params: { id: string }; Body: { user_id: string; lucky: boolean } }>,
 ): Promise<[number, any]> {
 	const connection = await getMariaConnection();
 	if (!connection) {
@@ -15,6 +15,7 @@ export default async function (
 
 	try {
 		const user_id = request.body.user_id;
+		const lucky = request.body.lucky;
 		if (!user_id || isNaN(parseInt(user_id))) {
 			return [400, { error: "Invalid user_id" }];
 		}
@@ -35,7 +36,18 @@ export default async function (
 			return [404, { error: "User not found" }];
 		}
 
-		const entry = getRandomWeightedEntry(item_case.items);
+		const adjustedItems = lucky
+			? (() => {
+					const avgChance =
+						item_case.items.reduce((sum, item) => sum + item.chance, 0) / item_case.items.length;
+					return item_case.items.map((item) => ({
+						...item,
+						chance: item.chance < avgChance ? item.chance * 5 : item.chance,
+					}));
+			  })()
+			: item_case.items;
+
+		const entry = getRandomWeightedEntry(adjustedItems);
 		const item_id = entry.id;
 
 		await connection.beginTransaction();
@@ -47,7 +59,10 @@ export default async function (
 			targetItem.claimed += 1;
 		}
 		const updatedItemsJSON = JSON.stringify(item_case.items);
-		await connection.query("UPDATE cases SET items = ?, opened_count = opened_count + 1 WHERE id = ?", [updatedItemsJSON, id]);
+		await connection.query("UPDATE cases SET items = ?, opened_count = opened_count + 1 WHERE id = ?", [
+			updatedItemsJSON,
+			id,
+		]);
 
 		await connection.commit();
 
