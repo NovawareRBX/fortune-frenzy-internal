@@ -44,8 +44,25 @@ fi
 
 run docker run --name FFInternalNew --net APIs -p ${new_port}:3000 -d ff-internal-new
 
-colored_echo "$yellow" "Waiting for the container to start..."
-sleep 5
+colored_echo "$yellow" "Waiting for the container to be ready..."
+
+max_attempts=300
+attempt=1
+while [ $attempt -le $max_attempts ]; do
+    if curl -s "http://localhost:${new_port}/health" >/dev/null; then
+        echo -en "\r${green}Container is ready!                                                ${nc}"
+        break
+    fi
+    echo -en "\r${cyan}Attempt $attempt/$max_attempts: Container not ready yet, waiting...                ${nc}"
+    sleep 0.5
+    ((attempt++))
+done
+echo
+
+if [ $attempt -gt $max_attempts ]; then
+    colored_echo "$red" "Container failed to start properly after $((max_attempts * 0.5)) seconds"
+    exit 1
+fi
 
 run sudo sed -i "s/127\.0\.0\.1:$current_port/127.0\.0\.1:${new_port}/g" /etc/nginx/sites-available/nova-api
 run sudo systemctl reload nginx
