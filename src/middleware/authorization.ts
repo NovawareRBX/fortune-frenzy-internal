@@ -22,50 +22,33 @@ export async function authorization(
 
 	const validateHeaders = (headers: string[]) => {
 		for (const header of headers) {
-			if (!request.headers[header]) {
-				throw new AuthError(`Missing required header: ${header}`);
-			}
+			if (!request.headers[header]) return false;
 		}
 	};
 
 	const validateInternalAuth = async (): Promise<boolean> => {
 		const key = request.headers["internal-authentication"] as string;
-		if (!key) throw new AuthError("Missing internal authentication key");
+		if (!key) return false;
 
 		const storedKey = await redis.get(`tempauth:${key}`);
-		if (key !== storedKey) throw new AuthError("Invalid internal authentication key");
+		if (key !== storedKey) return false;
 
 		await redis.del(`tempauth:${key}`);
 		return true;
 	};
 
 	const validateServerKey = async (): Promise<boolean> => {
-		if (request.headers["packeter-master-key"] === PACKETER_BYPASS_KEY) {
-			return true;
-		}
-
+		if (request.headers["packeter-master-key"] === PACKETER_BYPASS_KEY) return true;
 		validateHeaders(["server-id", "api-key"]);
 
-		const serverId = request.headers["server-id"] as string;
-		const apiKey = request.headers["api-key"] as string;
-
-		const storedApiKey = await redis.get(`api_key:${serverId}`);
-		const hashedApiKey = createHash("sha256").update(apiKey).digest("hex");
-
-		if (hashedApiKey !== storedApiKey) {
-			throw new AuthError("Invalid API key");
-		}
-
-		return true;
+		if (request.headers["api-key"] === process.env.ROBLOX_KEY) return true;
+		return false;
 	};
 
 	const validateMasterKey = (): boolean => {
 		validateHeaders(["master-key"]);
 
-		if (request.headers["master-key"] !== MASTER_KEY) {
-			throw new AuthError("Invalid master key");
-		}
-
+		if (request.headers["master-key"] !== MASTER_KEY) return false;
 		return true;
 	};
 

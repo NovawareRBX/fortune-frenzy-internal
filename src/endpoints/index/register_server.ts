@@ -31,15 +31,8 @@ export default async function (request: FastifyRequest<{ Params: { server_id: st
 		EX: 60 * 5,
 	});
 
-	discordLog(
-		"Log",
-		"Server Registered",
-		`A new server has been registered.\n\`\`\`json\n${JSON.stringify(
-			{ server_id, ip_address: maskIP(ip_address) },
-			null,
-			2,
-		)}\n\`\`\``,
-	);
+	console.log(`NEW API REGISTERED FOR SERVER ${server_id}: ${initial_api_key}`);
+	console.log(`SAVED TO REDIS AS ${createHash("sha256").update(initial_api_key).digest("hex")}`);
 
 	maria.release();
 	return [200, { status: "OK", api_key: initial_api_key }];

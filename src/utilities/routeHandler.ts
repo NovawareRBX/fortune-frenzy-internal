@@ -4,7 +4,7 @@ import { randomBytes, createHash } from "crypto";
 import { Endpoint } from "../types/Endpoints";
 import { authorization } from "../middleware/authorization";
 
-async function logRequest(request: FastifyRequest, reply: FastifyReply, payload: unknown) {
+async function logRequest(request: FastifyRequest, reply: FastifyReply, payload: unknown, executionTime?: number) {
 	try {
 		const redis = await getRedisConnection();
 		redis.publish(
@@ -17,6 +17,7 @@ async function logRequest(request: FastifyRequest, reply: FastifyReply, payload:
 						status_code: reply.statusCode,
 						payload,
 					},
+					executionTime: executionTime ? `${executionTime}ms` : undefined,
 				}),
 			),
 		);
@@ -29,31 +30,28 @@ export async function registerRoutes(fastify: FastifyInstance, endpoints: Endpoi
 			method: endpoint.method,
 			url: endpoint.url,
 			handler: async (request: FastifyRequest, reply: FastifyReply) => {
+				const startTime = process.hrtime();
+
 				const [statusCode, response] = await endpoint.callback(
 					request as FastifyRequest<{ Params: any; Body: any; Querystring: any; Headers: any }>,
 					reply,
 				);
 
-				logRequest(request, reply, response);
+				const [seconds, nanoseconds] = process.hrtime(startTime);
+				const executionTime = seconds * 1000 + nanoseconds / 1000000;
+				reply.header("X-Execution-Time", `${executionTime}ms`);
 				reply.code(statusCode).send(response);
+
+				console.log(JSON.stringify(response));
+
+				logRequest(request, reply, response, executionTime);
 			},
 		};
 
 		if (endpoint.authType !== "none") {
 			routeOptions.preHandler = async (request: FastifyRequest, reply: FastifyReply, done: any) => {
-				await authorization(request, endpoint.authType, endpoint.requiredHeaders);
-
-				if (endpoint.authType === "server_key" && !request.headers["packeter-master-key"]) {
-					const server_id = request.headers["server-id"] as string;
-					const redis = await getRedisConnection();
-					const new_api_key = randomBytes(32).toString("hex");
-					await redis.set(`api_key:${server_id}`, createHash("sha256").update(new_api_key).digest("hex"), {
-						EX: 60 * 5,
-					});
-					reply.header("new-api-key", new_api_key);
-				}
-
-				return;
+				const authorized = await authorization(request, endpoint.authType, endpoint.requiredHeaders);
+				if (!authorized) return reply.code(401).send({ error: "Unauthorized" });
 			};
 		}
 

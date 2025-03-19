@@ -3,33 +3,29 @@ import { getRedisConnection } from "../service/redis";
 
 export async function packeter(server: FastifyInstance, server_id: string, packet: Array<any>): Promise<[number, any]> {
 	const redis = await getRedisConnection();
-	packet.forEach((element) => {
-		(async () => {
-			// console.log(`Starting request ${element.request_id} for server ${server_id}`);
 
-			const route_str = element.route;
-			const route = server.findRoute({
-				url: route_str,
-				method: element.method,
-			});
-
-			if (!route) {
-				await redis.hSet(
-					`packet:${server_id}`,
-					element.request_id,
-					JSON.stringify({
-						request_id: element.request_id,
-						response: [404, { error: "Not Found" }],
-					}),
-				);
-				return;
-			}
-
+	if (packet.length > 0) {
+		const processingPromises = packet.map(async (element) => {
 			try {
-				// console.log(`Sending request ${element.request_id} for server ${server_id}`);
+				const route = server.findRoute({
+					url: element.route,
+					method: element.method,
+				});
+
+				if (!route) {
+					return redis.hSet(
+						`packet:${server_id}`,
+						element.request_id,
+						JSON.stringify({
+							request_id: element.request_id,
+							response: [404, { error: "Not Found" }],
+						}),
+					);
+				}
+
 				const response = await server.inject({
 					method: element.method,
-					url: route_str,
+					url: element.route,
 					query: element.query,
 					body: element.body,
 					headers: {
@@ -38,18 +34,17 @@ export async function packeter(server: FastifyInstance, server_id: string, packe
 					},
 				});
 
-				// console.log(`Received response for request ${element.request_id} for server ${server_id}`);
-
-				const request_id = element.request_id;
-				const response_packet = {
-					request_id: request_id,
-					response: [response.statusCode, JSON.parse(response.body)],
-				};
-
-				await redis.hSet(`packet:${server_id}`, request_id, JSON.stringify(response_packet));
+				return redis.hSet(
+					`packet:${server_id}`,
+					element.request_id,
+					JSON.stringify({
+						request_id: element.request_id,
+						response: [response.statusCode, JSON.parse(response.body)],
+					}),
+				);
 			} catch (error) {
 				console.error(`Error processing request ${element.request_id}:`, error);
-				await redis.hSet(
+				return redis.hSet(
 					`packet:${server_id}`,
 					element.request_id,
 					JSON.stringify({
@@ -58,8 +53,10 @@ export async function packeter(server: FastifyInstance, server_id: string, packe
 					}),
 				);
 			}
-		})();
-	});
+		});
+
+		await Promise.all(processingPromises);
+	}
 
 	await Promise.all([
 		redis.set(`servers:${server_id}:active`, "true", { EX: 1 }),
@@ -67,15 +64,14 @@ export async function packeter(server: FastifyInstance, server_id: string, packe
 	]);
 
 	const responses = await redis.hGetAll(`packet:${server_id}`);
-
 	const responses_object = Object.keys(responses).reduce((acc: { [key: string]: any }, key: string) => {
 		acc[key] = JSON.parse(responses[key]);
 		return acc;
 	}, {});
 
-	Object.keys(responses_object).forEach((key) => {
-		redis.hDel(`packet:${server_id}`, key);
-	});
+	if (Object.keys(responses_object).length > 0) {
+		await redis.del(`packet:${server_id}`);
+	}
 
 	return [
 		200,

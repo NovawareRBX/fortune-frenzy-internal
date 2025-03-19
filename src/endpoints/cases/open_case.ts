@@ -38,11 +38,12 @@ export default async function (
 
 		const adjustedItems = lucky
 			? (() => {
-					const avgChance =
-						item_case.items.reduce((sum, item) => sum + item.chance, 0) / item_case.items.length;
-					return item_case.items.map((item) => ({
+					const sortedItems = [...item_case.items].sort((a, b) => a.chance - b.chance);
+					const rarestItems = sortedItems.slice(0, 3);
+					const totalChance = rarestItems.reduce((sum, item) => sum + item.chance, 0);
+					return rarestItems.map((item) => ({
 						...item,
-						chance: item.chance < avgChance ? item.chance * 5 : item.chance,
+						chance: (item.chance / totalChance) * 100,
 					}));
 			  })()
 			: item_case.items;

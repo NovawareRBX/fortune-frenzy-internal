@@ -1,7 +1,9 @@
 import Fastify from "fastify";
+import fastifyCompress from "@fastify/compress";
 import dotenv from "dotenv";
 import cluster from "cluster";
 import { cpus } from "os";
+import { FastifyRequest } from "fastify";
 
 dotenv.config();
 
@@ -12,6 +14,14 @@ import casesRoutes from "./routes/cases";
 import itemRoutes from "./routes/items";
 import coinflipRoutes from "./routes/coinflip";
 import tradingRoutes from "./routes/trading";
+import statisticsRoutes from "./routes/statistics";
+
+// Extend FastifyRequest type to include startTime
+declare module "fastify" {
+	interface FastifyRequest {
+		startTime?: [number, number];
+	}
+}
 
 const numCPUs = cpus().length;
 if (cluster.isPrimary) {
@@ -26,17 +36,26 @@ if (cluster.isPrimary) {
 		cluster.fork();
 	});
 } else {
-	const server = Fastify({ ignoreTrailingSlash: true });
+	const server = Fastify({
+		ignoreTrailingSlash: true,
+		bodyLimit: 10 * 1024 * 1024,
+	});
 
 	const start = async () => {
 		try {
+			// await server.register(fastifyCompress, {
+			// 	global: true,
+			// 	encodings: ["gzip"],
+			// });
+
 			await server.register(indexRoute);
 			await server.register(userRoutes);
 			await server.register(marketplaceRoutes);
 			await server.register(casesRoutes);
 			await server.register(itemRoutes);
 			await server.register(coinflipRoutes);
-			await server.register(tradingRoutes)
+			await server.register(tradingRoutes);
+			await server.register(statisticsRoutes);
 
 			await server.listen({ port: 3000, host: "0.0.0.0" });
 

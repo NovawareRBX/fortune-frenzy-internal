@@ -22,7 +22,7 @@ const endpoints: Endpoint[] = [
 		method: "POST",
 		url: "/packet/:server_id",
 		authType: "server_key",
-		callback: async (request: FastifyRequest<{ Params: { server_id: string }; Body: { Packet: string } }>) => {
+		callback: async (request: FastifyRequest<{ Params: { server_id: string }; Body: { Packet: Array<any> } }>) => {
 			return await packet(request);
 		},
 	},

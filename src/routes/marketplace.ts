@@ -22,7 +22,7 @@ const endpoints: Endpoint[] = [
 		method: "GET",
 		url: "/marketplace/items",
 		authType: "none",
-		callback: async (_request: FastifyRequest) => {
+		callback: async () => {
 			return await items_all();
 		},
 	},

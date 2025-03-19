@@ -56,7 +56,7 @@ export default async function (
 
 		if (response.statusCode !== 200) {
 			coinflip.status = "failed";
-			await redis.set(`coinflip:${id}`, JSON.stringify(coinflip), { EX: 10 });
+			await redis.set(`coinflip:${id}`, JSON.stringify(coinflip), { EX: 5 });
 			await redis.del(`coinflip:${id}:user:${coinflip.player1.id}`);
 			await redis.del(`coinflip:${id}:user:${coinflip.player2.id}`);
 			return [500, { error: "Item transfer failed" }];
@@ -78,7 +78,7 @@ export default async function (
 
 		coinflip.status = "completed";
 		coinflip.transfer_id = body.transfer_id;
-		await redis.set(`coinflip:${id}`, JSON.stringify(coinflip), { EX: 40 });
+		await redis.set(`coinflip:${id}`, JSON.stringify(coinflip), { EX: 5 });
 		await redis.del(`coinflip:${id}:user:${coinflip.player1.id}`);
 		await redis.del(`coinflip:${id}:user:${coinflip.player2.id}`);
 
@@ -110,7 +110,7 @@ export default async function (
 		const [auto_id] = await maria.query("SELECT auto_id FROM past_coinflips WHERE id = ?", [id]);
 		coinflip.auto_id = auto_id.auto_id;
 
-		await redis.set(`coinflip:${id}`, JSON.stringify(coinflip), { EX: 40 });
+		await redis.set(`coinflip:${id}`, JSON.stringify(coinflip), { EX: 5 });
 
 		discordLog("Log", "Coinflip Completed", `Coinflip ${id} has been completed`);
 
