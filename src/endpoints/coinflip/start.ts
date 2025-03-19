@@ -39,7 +39,7 @@ export default async function (
 			return [400, { error: "Coinflip cannot be started" }];
 		}
 
-		const response = await doSelfHttpRequest(request, {
+		const response = await doSelfHttpRequest(request.server, {
 			method: "POST",
 			url: "/items/item-transfer",
 			body: [
@@ -82,7 +82,7 @@ export default async function (
 		await redis.del(`coinflip:${id}:user:${coinflip.player1.id}`);
 		await redis.del(`coinflip:${id}:user:${coinflip.player2.id}`);
 
-		doSelfHttpRequest(request, {
+		doSelfHttpRequest(request.server, {
 			method: "POST",
 			url: `/items/item-transfer/${body.transfer_id}/confirm`,
 			body: {

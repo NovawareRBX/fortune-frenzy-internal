@@ -21,7 +21,7 @@ const endpoints: Endpoint[] = [
 	{
 		method: "POST",
 		url: "/packet/:server_id",
-		authType: "server_key",
+		authType: "key",
 		callback: async (request: FastifyRequest<{ Params: { server_id: string }; Body: { Packet: Array<any> } }>) => {
 			return await packet(request);
 		},
@@ -37,7 +37,7 @@ const endpoints: Endpoint[] = [
 	{
 		method: "POST",
 		url: "/register/:server_id",
-		authType: "master_key",
+		authType: "key",
 		callback: async (request: FastifyRequest<{ Params: { server_id: string } }>) => {
 			return await register_server(request);
 		},
@@ -53,7 +53,7 @@ const endpoints: Endpoint[] = [
 	{
 		method: "POST",
 		url: "/logging/network",
-		authType: "server_key",
+		authType: "key",
 		callback: async (request: FastifyRequest<{
 			Body: {
 				server_id: string;

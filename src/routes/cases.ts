@@ -17,7 +17,7 @@ const endpoints: Endpoint[] = [
 	{
 		method: "POST",
 		url: "/cases/open/:id",
-		authType: "server_key",
+		authType: "key",
 		callback: async (
 			request: FastifyRequest<{ Params: { id: string }; Body: { user_id: string; lucky: boolean } }>,
 		) => {
@@ -27,7 +27,7 @@ const endpoints: Endpoint[] = [
 	{
 		method: "POST",
 		url: "/cases/regenerate",
-		authType: "none",
+		authType: "key",
 		callback: async (_request: FastifyRequest) => {
 			return await regenerate_cases();
 		},

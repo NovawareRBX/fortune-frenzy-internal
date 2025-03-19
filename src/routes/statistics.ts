@@ -8,7 +8,7 @@ const endpoints: Endpoint[] = [
 	{
 		method: "POST",
 		url: "/statistics/minigames/:name",
-		authType: "server_key",
+		authType: "key",
 		callback: async (
 			request: FastifyRequest<{
 				Params: { name: string };

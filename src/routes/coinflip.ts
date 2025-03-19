@@ -11,7 +11,7 @@ const endpoints: Endpoint[] = [
 	{
 		method: "POST",
 		url: "/coinflip/create/:server_id",
-		authType: "server_key",
+		authType: "key",
 		callback: async (
 			request: FastifyRequest<{
 				Params: { server_id: string };
@@ -24,7 +24,7 @@ const endpoints: Endpoint[] = [
 	{
 		method: "POST",
 		url: "/coinflip/join/:coinflip_id",
-		authType: "server_key",
+		authType: "key",
 		callback: async (
 			request: FastifyRequest<{
 				Params: { coinflip_id: string };
@@ -37,7 +37,7 @@ const endpoints: Endpoint[] = [
 	{
 		method: "POST",
 		url: "/coinflip/start/:coinflip_id",
-		authType: "server_key",
+		authType: "key",
 		callback: async (
 			request: FastifyRequest<{
 				Params: { coinflip_id: string };
@@ -61,7 +61,7 @@ const endpoints: Endpoint[] = [
 	{
 		method: "POST",
 		url: "/coinflip/cancel/:coinflip_id",
-		authType: "server_key",
+		authType: "key",
 		callback: async (
 			request: FastifyRequest<{
 				Params: { coinflip_id: string };

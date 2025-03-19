@@ -75,7 +75,7 @@ export default async function (
 		setTimeout(async () => {
 			console.log("Starting coinflip", coinflip_id);
 
-			const response = await doSelfHttpRequest(request, {
+			const response = await doSelfHttpRequest(request.server, {
 				method: "POST",
 				url: `/coinflip/start/${coinflip_id}`,
 				body: {

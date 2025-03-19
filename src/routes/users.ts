@@ -17,7 +17,7 @@ const endpoints: Endpoint[] = [
 	{
 		method: "POST",
 		url: "/users/:id",
-		authType: "server_key",
+		authType: "key",
 		callback: async (
 			request: FastifyRequest<{ Params: { id: string }; Body: { name?: string; display_name?: string } }>,
 		) => {
@@ -35,7 +35,7 @@ const endpoints: Endpoint[] = [
 	{
 		method: "POST",
 		url: "/users/update",
-		authType: "server_key",
+		authType: "key",
 		callback: async (
 			request: FastifyRequest<{
 				Body: {
@@ -73,7 +73,7 @@ const endpoints: Endpoint[] = [
 	{
 		method: "POST",
 		url: "/users/:id/add-cash",
-		authType: "server_key",
+		authType: "key",
 		callback: async (request: FastifyRequest<{ Params: { id: string } }>) => {
 			return await add_cash(request);
 		},
@@ -81,7 +81,7 @@ const endpoints: Endpoint[] = [
 	{
 		method: "GET",
 		url: "/users/get-cash-changes",
-		authType: "server_key",
+		authType: "key",
 		callback: async (request: FastifyRequest) => {
 			return await get_cash_changes(request);
 		},

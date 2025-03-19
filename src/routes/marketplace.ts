@@ -53,7 +53,7 @@ const endpoints: Endpoint[] = [
 	{
 		method: "POST",
 		url: "/marketplace/copies/:uaid/list",
-		authType: "server_key",
+		authType: "key",
 		callback: async (request: FastifyRequest<{ Params: { uaid: string }; Body: { price?: number; expiry?: number } }>) => {
 			if (request.body === undefined) return [400, { error: "Missing body" }];
 			return list_item(request);
@@ -62,7 +62,7 @@ const endpoints: Endpoint[] = [
 	{
 		method: "POST",
 		url: "/marketplace/copies/:uaid/buy",
-		authType: "server_key",
+		authType: "key",
 		callback: async (request: FastifyRequest<{ Params: { uaid: string }; Body: { buyer_id?: string } }>) => {
 			return await buy_uaid(request);
 		},

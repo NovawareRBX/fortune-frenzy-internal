@@ -1,23 +1,12 @@
 import { FastifyRequest } from "fastify";
 import { AuthType } from "../types/Endpoints";
 import { getRedisConnection } from "../service/redis";
-import { createHash } from "crypto";
-
-class AuthError extends Error {
-	constructor(message: string) {
-		super(message);
-		this.name = "AuthError";
-	}
-}
 
 export async function authorization(
 	request: FastifyRequest,
 	authType: AuthType,
 	requiredHeaders?: Array<string>,
 ): Promise<boolean> {
-	const MASTER_KEY = process.env.MASTER_KEY || "";
-	const PACKETER_BYPASS_KEY = process.env.PACKETER_BYPASS_KEY || "";
-
 	const redis = await getRedisConnection();
 
 	const validateHeaders = (headers: string[]) => {
@@ -38,24 +27,14 @@ export async function authorization(
 	};
 
 	const validateServerKey = async (): Promise<boolean> => {
-		if (request.headers["packeter-master-key"] === PACKETER_BYPASS_KEY) return true;
-		validateHeaders(["server-id", "api-key"]);
-
-		if (request.headers["api-key"] === process.env.ROBLOX_KEY) return true;
+		validateHeaders(["x-api-key"]);
+		if (request.headers["x-api-key"] === process.env.AUTHENTICATION_KEY) return true;
 		return false;
-	};
-
-	const validateMasterKey = (): boolean => {
-		validateHeaders(["master-key"]);
-
-		if (request.headers["master-key"] !== MASTER_KEY) return false;
-		return true;
 	};
 
 	if (requiredHeaders) validateHeaders(requiredHeaders);
 	if (request.headers["internal-authentication"]) return await validateInternalAuth();
-	if (authType === "server_key") return await validateServerKey();
-	if (authType === "master_key") return validateMasterKey();
+	if (authType === "key") return await validateServerKey();
 
 	return true;
 }

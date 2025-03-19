@@ -1,6 +1,6 @@
 import { FastifyRequest, FastifyReply, HTTPMethods, FastifySchema } from "fastify";
 
-export type AuthType = "none" | "server_key" | "master_key";
+export type AuthType = "none" | "key"
 
 export interface Endpoint<Params = any, Body = any, Query = any, Headers = any> {
 	method: HTTPMethods; // Defines the HTTP method (GET, POST, etc.)

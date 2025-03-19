@@ -1,5 +1,6 @@
 import { FastifyInstance } from "fastify";
 import { getRedisConnection } from "../service/redis";
+import doSelfHttpRequest from "./doSelfHttpRequest";
 
 export async function packeter(server: FastifyInstance, server_id: string, packet: Array<any>): Promise<[number, any]> {
 	const redis = await getRedisConnection();
@@ -23,14 +24,13 @@ export async function packeter(server: FastifyInstance, server_id: string, packe
 					);
 				}
 
-				const response = await server.inject({
+				const response = await doSelfHttpRequest(server, {
 					method: element.method,
 					url: element.route,
 					query: element.query,
 					body: element.body,
 					headers: {
 						...element.headers,
-						"packeter-master-key": process.env.PACKETER_BYPASS_KEY,
 					},
 				});
 

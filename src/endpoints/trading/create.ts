@@ -87,7 +87,7 @@ export default async function (
 		)
 			return [400, { error: "Invalid items" }];
 
-		const response = await doSelfHttpRequest(request, {
+		const response = await doSelfHttpRequest(request.server, {
 			method: "POST",
 			url: "/items/item-transfer",
 			body: [

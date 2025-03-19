@@ -26,7 +26,7 @@ export default async function (
 		if (!trade_data) return [404, { error: "Trade not found" }];
 		if (trade_data.status !== "pending") return [400, { error: "Trade is not active" }];
 
-		const response = await doSelfHttpRequest(request, {
+		const response = await doSelfHttpRequest(request.server, {
 			method: "POST",
 			url: `/items/item-transfer/${trade_data.transfer_id}/confirm?swap=true`,
 		});

@@ -19,7 +19,7 @@ const endpoints: Endpoint[] = [
 	{
 		method: "POST",
 		url: "/trades/create",
-		authType: "server_key",
+		authType: "key",
 		callback: async (
 			request: FastifyRequest<{
 				Body: {
@@ -36,7 +36,7 @@ const endpoints: Endpoint[] = [
 	{
 		method: "POST",
 		url: "/trades/accept/:trade_id",
-		authType: "server_key",
+		authType: "key",
 		callback: async (
 			request: FastifyRequest<{
 				Params: { trade_id: string };
@@ -48,7 +48,7 @@ const endpoints: Endpoint[] = [
 	{
 		method: "POST",
 		url: "/trades/cancel/:trade_id",
-		authType: "server_key",
+		authType: "key",
 		callback: async (
 			request: FastifyRequest<{
 				Params: { trade_id: string };
