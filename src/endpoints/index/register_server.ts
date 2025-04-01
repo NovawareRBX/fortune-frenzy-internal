@@ -34,6 +34,7 @@ export default async function (request: FastifyRequest<{ Params: { server_id: st
 	console.log(`NEW API REGISTERED FOR SERVER ${server_id}: ${initial_api_key}`);
 	console.log(`SAVED TO REDIS AS ${createHash("sha256").update(initial_api_key).digest("hex")}`);
 
+	// i love my boyfriend
 	maria.release();
 	return [200, { status: "OK", api_key: initial_api_key }];
 }

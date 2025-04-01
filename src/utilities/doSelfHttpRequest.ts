@@ -7,7 +7,6 @@ export default async function (server: FastifyInstance, inject: InjectOptions) {
 	const key = randomBytes(16).toString("hex");
 	redis.set(`tempauth:${key}`, key, { EX: 60 });
 
-	// make a request to the same server
 	return await server.inject({
 		...inject,
 		headers: {
