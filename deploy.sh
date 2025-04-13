@@ -48,7 +48,7 @@ if [ -n "$old_container" ]; then
   run docker rm $old_container
 fi
 
-run docker run --name FFInternalNew --net APIs -p ${new_port}:3000 -d ff-internal-new
+run docker run --name FFInternalNew --net APIs --net monitoring -p ${new_port}:3000 -d ff-internal-new
 
 colored_echo "$yellow" "Waiting for the container to be ready..."
 

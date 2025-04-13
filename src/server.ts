@@ -3,7 +3,7 @@ import fastifyCompress from "@fastify/compress";
 import dotenv from "dotenv";
 import cluster from "cluster";
 import { cpus } from "os";
-import { FastifyRequest } from "fastify";
+import { FastifyRequest, FastifyReply } from "fastify";
 
 dotenv.config();
 
@@ -15,6 +15,7 @@ import itemRoutes from "./routes/items";
 import coinflipRoutes from "./routes/coinflip";
 import tradingRoutes from "./routes/trading";
 import statisticsRoutes from "./routes/statistics";
+import { metricsPlugin, requestCounter, rpsCounter } from "./middleware/metrics";
 
 // Extend FastifyRequest type to include startTime
 declare module "fastify" {
@@ -43,11 +44,27 @@ if (cluster.isPrimary) {
 
 	const start = async () => {
 		try {
-			// await server.register(fastifyCompress, {
-			// 	global: true,
-			// 	encodings: ["gzip"],
-			// });
+			server.addHook("onRequest", async (request: FastifyRequest, reply: FastifyReply) => {
+				// Skip monitoring for /metrics endpoint
+				if (request.url === "/metrics") return;
+				console.log(`Request received: ${request.url}`);
+				request.startTime = process.hrtime();
+			});
 
+			server.addHook("onResponse", async (request: FastifyRequest, reply: FastifyReply) => {
+				if (request.url === "/metrics") return;
+				const route = request.routeOptions?.url || request.url.split("?")[0] || "unknown";
+				const method = request.method;
+				const statusCode = reply.statusCode.toString();
+
+				requestCounter.inc({ method, route, status_code: statusCode });
+				rpsCounter.inc({ method, route });
+			});
+
+			// Register metrics plugin (only for /metrics endpoint)
+			await server.register(metricsPlugin);
+
+			// Register all routes
 			await server.register(indexRoute);
 			await server.register(userRoutes);
 			await server.register(marketplaceRoutes);

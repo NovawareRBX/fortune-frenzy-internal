@@ -42,8 +42,6 @@ export async function registerRoutes(fastify: FastifyInstance, endpoints: Endpoi
 				reply.header("X-Execution-Time", `${executionTime}ms`);
 				reply.code(statusCode).send(response);
 
-				console.log(JSON.stringify(response));
-
 				logRequest(request, reply, response, executionTime);
 			},
 		};

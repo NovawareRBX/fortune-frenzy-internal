@@ -8,6 +8,7 @@ import register_server from "../endpoints/index/register_server";
 import settings from "../endpoints/index/settings";
 import server_info from "../endpoints/index/server_info";
 import roblox_network_log from "../endpoints/index/roblox_network_log";
+import network_fail from "../endpoints/reporting/network_fail";
 
 const endpoints: Endpoint[] = [
 	{
@@ -54,20 +55,39 @@ const endpoints: Endpoint[] = [
 		method: "POST",
 		url: "/logging/network",
 		authType: "key",
-		callback: async (request: FastifyRequest<{
-			Body: {
-				server_id: string;
-				logs: {
-					network_name: string;
-					speed: number;
-					response: string;
-					player: { name: string; id: number };
-				}[];
-			};
-		}>) => {
+		callback: async (
+			request: FastifyRequest<{
+				Body: {
+					server_id: string;
+					logs: {
+						network_name: string;
+						speed: number;
+						response: string;
+						player: { name: string; id: number };
+					}[];
+				};
+			}>,
+		) => {
 			return await roblox_network_log(request);
 		},
-	}
+	},
+	{
+		method: "POST",
+		url: "/reporting/network_fail",
+		authType: "key",
+		callback: async (
+			request: FastifyRequest<{
+				Body: {
+					network: string;
+					networkData: { name: string; globalName: string; eventType: "Event" | "Function" };
+					incorrectArg: { index?: number; value: string };
+					player: number;
+				};
+			}>,
+		) => {
+			return await network_fail(request);
+		},
+	},
 ];
 
 async function indexRoutes(fastify: FastifyInstance) {
