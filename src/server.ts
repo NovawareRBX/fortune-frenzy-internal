@@ -1,5 +1,6 @@
 import Fastify from "fastify";
 import fastifyCompress from "@fastify/compress";
+import fastifyCors from "@fastify/cors";
 import dotenv from "dotenv";
 import cluster from "cluster";
 import { cpus } from "os";
@@ -16,6 +17,8 @@ import coinflipRoutes from "./routes/coinflip";
 import tradingRoutes from "./routes/trading";
 import statisticsRoutes from "./routes/statistics";
 import { metricsPlugin, requestCounter, rpsCounter } from "./middleware/metrics";
+import casebattleRoutes from "./routes/casebattles";
+import discordRoutes from "./routes/discord";
 
 // Extend FastifyRequest type to include startTime
 declare module "fastify" {
@@ -44,6 +47,13 @@ if (cluster.isPrimary) {
 
 	const start = async () => {
 		try {
+			// Register CORS plugin
+			await server.register(fastifyCors, {
+				origin: ["https://trcs.frazers.co"],
+				methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+				credentials: true,
+			});
+
 			server.addHook("onRequest", async (request: FastifyRequest, reply: FastifyReply) => {
 				// Skip monitoring for /metrics endpoint
 				if (request.url === "/metrics") return;
@@ -73,6 +83,8 @@ if (cluster.isPrimary) {
 			await server.register(coinflipRoutes);
 			await server.register(tradingRoutes);
 			await server.register(statisticsRoutes);
+			await server.register(casebattleRoutes);
+			await server.register(discordRoutes);
 
 			await server.listen({ port: 3000, host: "0.0.0.0" });
 
