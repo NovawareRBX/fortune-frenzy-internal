@@ -2,7 +2,6 @@
 
 green='\033[0;32m'
 blue='\033[0;34m'
-magenta='\033[1;35m'
 yellow='\033[1;33m'
 red='\033[0;31m'
 cyan='\033[0;36m'
@@ -18,7 +17,6 @@ run() {
   "$@" > /dev/null 2>&1
 }
 
-# Check if -nl flag is present
 no_logs=false
 if [ "$1" == "-nl" ]; then
   no_logs=true
@@ -88,7 +86,6 @@ run docker rename FFInternalNew FFInternal
 
 colored_echo "$green" "Deployment Complete!"
 
-# Only show logs if -nl flag wasn't used
 if [ "$no_logs" = false ]; then
   colored_echo "$cyan" "Following container logs in real-time (Press Ctrl+C to exit)..."
   docker logs -f FFInternal

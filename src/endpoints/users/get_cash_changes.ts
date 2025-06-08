@@ -1,68 +1,63 @@
 import { FastifyRequest } from "fastify";
 import { getMariaConnection } from "../../service/mariadb";
 import smartQuery from "../../utilities/smartQuery";
-import discordLog from "../../utilities/discordLog";
 
 interface CashChangeRequest {
 	user_id: bigint;
 	amount: bigint;
 }
 
-export default async function handleRequest(request: FastifyRequest): Promise<[number, any]> {
-	const connection = await getMariaConnection();
-	if (!connection) {
-		return [500, { error: "Failed to connect to the database" }];
-	}
-
-	try {
-		const userIdsHeader = request.headers["user-ids"] as string;
-		if (!userIdsHeader) {
-			return [400, { error: "Missing user-ids header" }];
+export default {
+	method: "GET",
+	url: "/users/get-cash-changes",
+	authType: "key",
+	callback: async function handleRequest(request: FastifyRequest): Promise<[number, any]> {
+		const connection = await getMariaConnection();
+		if (!connection) {
+			return [500, { error: "Failed to connect to the database" }];
 		}
 
-		const userIds = userIdsHeader.split(",").map((id) => id.trim());
-		if (!userIds.length) {
-			return [400, { error: "No user-ids found in header" }];
-		}
+		try {
+			const userIdsHeader = request.headers["user-ids"] as string;
+			if (!userIdsHeader) {
+				return [400, { error: "Missing user-ids header" }];
+			}
 
-		await connection.beginTransaction();
-		const rows = await smartQuery<CashChangeRequest[]>(
-			connection,
-			`SELECT user_id, amount FROM external_cash_change_requests WHERE status = 'pending' AND user_id IN (?) FOR UPDATE`,
-			[userIds.map((id) => Number(id))],
-		);
+			const userIds = userIdsHeader.split(",").map((id) => id.trim());
+			if (!userIds.length) {
+				return [400, { error: "No user-ids found in header" }];
+			}
 
-		if (rows.length === 0) {
+			await connection.beginTransaction();
+			const rows = await smartQuery<CashChangeRequest[]>(
+				connection,
+				`SELECT user_id, amount FROM external_cash_change_requests WHERE status = 'pending' AND user_id IN (?) FOR UPDATE`,
+				[userIds.map((id) => Number(id))],
+			);
+
+			if (rows.length === 0) {
+				await connection.rollback();
+				return [200, { status: "OK", changes: [] }];
+			}
+
+			const changes = rows.map((row) => ({
+				user_id: row.user_id,
+				amount: row.amount,
+			}));
+
+			await connection.query(
+				`UPDATE external_cash_change_requests SET status = 'processed', processed_at = CURRENT_TIMESTAMP WHERE user_id IN (?) AND status = 'pending'`,
+				[rows.map((row) => row.user_id.toString())],
+			);
+
+			await connection.commit();
+
+			return [200, { status: "OK", changes }];
+		} catch (error) {
 			await connection.rollback();
-			return [200, { status: "OK", changes: [] }];
+			return [500, { error: "Internal Server Error" }];
+		} finally {
+			await connection.release();
 		}
-
-		const changes = rows.map((row) => ({
-			user_id: row.user_id,
-			amount: row.amount,
-		}));
-
-		await connection.query(
-			`UPDATE external_cash_change_requests SET status = 'processed', processed_at = CURRENT_TIMESTAMP WHERE user_id IN (?) AND status = 'pending'`,
-			[rows.map((row) => row.user_id.toString())],
-		);
-
-		await connection.commit();
-
-		discordLog(
-			"Log",
-			"Processed Cash Changes",
-			`Processed cash changes for users ${userIds.join(", ")} with amounts ${changes
-				.map((change) => change.amount)
-				.join(", ")}`,
-		);
-
-		return [200, { status: "OK", changes }];
-	} catch (error) {
-		discordLog("Warning", "Failed to process cash changes", `Failed to process cash changes with error: ${error}`);
-		await connection.rollback();
-		return [500, { error: "Internal Server Error" }];
-	} finally {
-		await connection.release();
 	}
-}
+};

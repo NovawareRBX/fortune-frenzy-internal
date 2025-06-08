@@ -15,7 +15,7 @@ function initializePool(database: DatabaseName): void {
 	}
 
 	pools[database] = mariadb.createPool({
-		host: "172.18.0.4",
+		host: "proxysql",
 		port: 6033,
 		user: credentials[database][0],
 		password: credentials[database][1],

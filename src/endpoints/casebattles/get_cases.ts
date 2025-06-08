@@ -1,50 +1,39 @@
+import { FastifyRequest } from "fastify";
+import { CasebattlesRedisManager } from "../../service/casebattles-redis";
 import { getMariaConnection } from "../../service/mariadb";
+import { getRedisConnection } from "../../service/redis";
 import smartQuery from "../../utilities/smartQuery";
 
-interface CaseRow {
-	id: number;
+export interface CaseRow {
+	id: string;
 	name: string;
-	currency: string;
-	category: string;
-	price: number;
+	slug: string;
 	image: string;
-	hex: string;
+	price: number;
+	total_opened: number;
+	created_at: Date;
 }
 
-interface ItemRow {
+export interface ItemRow {
 	id: number;
-	case_id: number;
-	asset_id: number;
-	chance: number;
+	case_id: string;
+	asset_id: string;
+	asset_type: string;
+	name: string;
 	value: number;
+	image: string;
+	min_ticket: number;
+	max_ticket: number;
 }
 
-export default async function (): Promise<[number, any]> {
-	const connection = await getMariaConnection();
-	if (!connection) {
-		return [500, { error: "failed to connect to the database" }];
-	}
-
-	try {
-		const cases: CaseRow[] = await smartQuery(connection, "SELECT * FROM virtual_cases");
-		const items: ItemRow[] = await smartQuery(connection, "SELECT * FROM virtual_case_items");
-
-		const caseItems: Record<number, ItemRow[]> = {};
-		for (const item of items) {
-			if (!caseItems[item.case_id]) caseItems[item.case_id] = [];
-			caseItems[item.case_id].push(item);
-		}
-
-		const result = cases.map((c) => ({
-			...c,
-			items: caseItems[c.id] || [],
-		}));
-
-		return [200, { status: "OK", data: result }];
-	} catch (error) {
-		console.error("error fetching cases and items:", error);
-		return [500, { error: "internal server error" }];
-	} finally {
-		await connection.release();
-	}
-}
+export default {
+	method: "GET",
+	url: "/casebattles/cases",
+	authType: "none",
+	callback: async function callback(request: FastifyRequest): Promise<[number, any]> {
+		const redis = await getRedisConnection();
+		const casebattlesRedisManager = new CasebattlesRedisManager(redis, request.server);
+		const cases = await casebattlesRedisManager.getCases();
+		return [200, { status: "OK", data: cases }];
+	},
+};

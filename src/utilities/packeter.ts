@@ -1,6 +1,6 @@
 import { FastifyInstance } from "fastify";
 import { getRedisConnection } from "../service/redis";
-import doSelfHttpRequest from "./doSelfHttpRequest";
+import doSelfHttpRequest from "./internalRequest";
 
 export async function packeter(server: FastifyInstance, server_id: string, packet: Array<any>): Promise<[number, any]> {
 	const redis = await getRedisConnection();

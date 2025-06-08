@@ -11,7 +11,8 @@ async function initialize(): Promise<void> {
 			tls: false,
 		},
 		database: 0,
-		commandsQueueMaxLength: 1000,
+		commandsQueueMaxLength: 0,
+		// enableAutoPipelining: true,
 	});
 
 	client.on("error", (error) => {

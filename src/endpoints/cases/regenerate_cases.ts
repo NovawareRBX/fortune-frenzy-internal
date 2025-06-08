@@ -97,54 +97,59 @@ async function selectCaseItemsWithFillers(
 	return items;
 }
 
-export default async function regenerate_cases(): Promise<[number, any]> {
-	const connection = await getMariaConnection();
-	if (!connection) {
-		console.error("database connection failed");
-		return [500, { error: "failed to establish database connection" }];
-	}
-
-	try {
-		const cases = await smartQuery<ItemCase[]>(connection, "SELECT * FROM cases");
-		cases.sort((a, b) => a.min_value - b.min_value);
-
-		const usedItemIds = new Set<string>();
-
-		for (let i = 0; i < cases.length; i++) {
-			const caseData = cases[i];
-			const validItems = await smartQuery<{ id: string; value: number }[]>(
-				connection,
-				"SELECT id, value FROM items WHERE value >= ? AND value <= ?",
-				[caseData.min_value, caseData.max_value],
-			);
-
-			const items = await selectCaseItemsWithFillers(connection, caseData, validItems, usedItemIds, cases);
-			const caseItemsWithChances = calculateItemChances(items);
-			const chances = caseItemsWithChances.map((item) => item.chance);
-			const calculatedPrice = calculateCasePrice(items, chances);
-
-			await connection.query(
-				"UPDATE cases SET items = ?, price = ?, next_rotation = ?, opened_count = 0 WHERE id = ?",
-				[
-					JSON.stringify(caseItemsWithChances),
-					calculatedPrice,
-					new Date(Date.now() + 1000 * 60 * 60 * 24 * 3),
-					caseData.id,
-				],
-			);
+export default {
+	method: "POST",
+	url: "/cases/regenerate",
+	authType: "key",
+	callback: async function(): Promise<[number, any]> {
+		const connection = await getMariaConnection();
+		if (!connection) {
+			console.error("database connection failed");
+			return [500, { error: "failed to establish database connection" }];
 		}
 
-		return [200, { success: true }];
-	} catch (error) {
-		console.error("error regenerating cases:", error);
-		return [
-			500,
-			{
-				error: "internal server error",
-				details: error instanceof Error ? error.message : "unknown error",
-			},
-		];
-	} finally {
-		connection.release();
+		try {
+			const cases = await smartQuery<ItemCase[]>(connection, "SELECT * FROM cases");
+			cases.sort((a, b) => a.min_value - b.min_value);
+
+			const usedItemIds = new Set<string>();
+
+			for (let i = 0; i < cases.length; i++) {
+				const caseData = cases[i];
+				const validItems = await smartQuery<{ id: string; value: number }[]>(
+					connection,
+					"SELECT id, value FROM items WHERE value >= ? AND value <= ?",
+					[caseData.min_value, caseData.max_value],
+				);
+
+				const items = await selectCaseItemsWithFillers(connection, caseData, validItems, usedItemIds, cases);
+				const caseItemsWithChances = calculateItemChances(items);
+				const chances = caseItemsWithChances.map((item) => item.chance);
+				const calculatedPrice = calculateCasePrice(items, chances);
+
+				await connection.query(
+					"UPDATE cases SET items = ?, price = ?, next_rotation = ?, opened_count = 0 WHERE id = ?",
+					[
+						JSON.stringify(caseItemsWithChances),
+						calculatedPrice,
+						new Date(Date.now() + 1000 * 60 * 60 * 24 * 3),
+						caseData.id,
+					],
+				);
+			}
+
+			return [200, { success: true }];
+		} catch (error) {
+			console.error("error regenerating cases:", error);
+			return [
+				500,
+				{
+					error: "internal server error",
+					details: error instanceof Error ? error.message : "unknown error",
+				},
+			];
+		} finally {
+			connection.release();
+		}
 	}
-}
+};

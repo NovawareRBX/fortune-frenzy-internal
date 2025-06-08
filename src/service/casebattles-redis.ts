@@ -1,0 +1,349 @@
+import { FastifyInstance } from "fastify";
+import { RedisClientType } from "redis";
+import { CaseRow, ItemRow } from "../endpoints/casebattles/get_cases";
+import { getMariaConnection } from "./mariadb";
+import smartQuery from "../utilities/smartQuery";
+import { randomCaseBattleSpin, randomNumber } from "../utilities/secureRandomness";
+import groupModeHandler from "../utilities/casebattles-mode-handlers/group";
+import randomizerModeHandler from "../utilities/casebattles-mode-handlers/randomizer";
+import showdownModeHandler from "../utilities/casebattles-mode-handlers/showdown";
+import standardModeHandler from "../utilities/casebattles-mode-handlers/standard";
+
+export interface CaseBattleData {
+	id: string;
+	server_id: string;
+	server_seed: string;
+	team_mode: "1v1" | "1v1v1" | "1v1v1v1" | "2v2";
+	crazy: boolean;
+	mode: "standard" | "randomized" | "showdown" | "group";
+	fast_mode: boolean;
+	players: {
+		id: string;
+		username: string;
+		display_name: string;
+		position: number;
+		bot: boolean;
+		client_seed: string;
+	}[];
+	cases: string[];
+	player_pulls: {
+		[player_id: string]: {
+			items: {
+				id: number;
+				case_index: number;
+				roll: string;
+				hash: string;
+				value: number;
+			}[];
+			total_value: number;
+		};
+	};
+	current_spin_data: {
+		current_case_index: number;
+	};
+	winners_info?: {
+		player_id: string;
+		amount_won: number;
+	}[];
+	status: "waiting_for_players" | "in_progress" | "completed";
+	created_at: number;
+	started_at: number;
+	completed_at: number;
+	updated_at: number;
+}
+
+const CASEBATTLE_EXPIRY = 3600; // 1 hour
+const LOCK_EXPIRY = 10; // 10 seconds, reduced for faster lock release
+
+export class CasebattlesRedisManager {
+	private redis: RedisClientType;
+	private server: FastifyInstance;
+
+	constructor(redis: RedisClientType, server: FastifyInstance) {
+		this.redis = redis;
+		this.server = server;
+	}
+
+	private getKey(type: string, id: string): string {
+		return `casebattle:${type}:${id}`;
+	}
+
+	private async delay(ms: number): Promise<void> {
+		return new Promise((resolve) => setTimeout(resolve, ms));
+	}
+
+	async createCaseBattle(data: CaseBattleData): Promise<boolean> {
+		const lockKey = this.getKey("lock", data.players[0].id);
+		const casebattleKey = this.getKey("game", data.id);
+		const playerKey = this.getKey("player", data.players[0].id);
+
+		const existingBattle = await this.redis.get(playerKey);
+		if (existingBattle) {
+			const existingGame = await this.redis.get(this.getKey("game", existingBattle));
+			if (existingGame) {
+				const gameData: CaseBattleData = JSON.parse(existingGame);
+				if (gameData.status !== "completed") {
+					return false;
+				}
+			}
+		}
+
+		const result = await this.redis
+			.multi()
+			.set(lockKey, "1", { NX: true, EX: LOCK_EXPIRY })
+			.set(casebattleKey, JSON.stringify(data), { NX: true, EX: CASEBATTLE_EXPIRY })
+			.sAdd(this.getKey("server", data.server_id), data.id)
+			.sAdd("casebattles:global", data.id)
+			.set(playerKey, data.id, { EX: CASEBATTLE_EXPIRY })
+			.exec();
+
+		if (!result || result.some((reply) => !reply)) {
+			await this.redis.del([lockKey, casebattleKey, playerKey]);
+			return false;
+		}
+
+		return true;
+	}
+
+	async joinCaseBattle(casebattleId: string, updatedData: CaseBattleData): Promise<boolean> {
+		const MAX_RETRIES = 3;
+		const RETRY_DELAY = 100;
+
+		const gameKey = this.getKey("game", casebattleId);
+
+		for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+			try {
+				await this.redis.watch(gameKey);
+
+				const currentGame = await this.redis.get(gameKey);
+				if (!currentGame) {
+					await this.redis.unwatch();
+					return false;
+				}
+
+				const current: CaseBattleData = JSON.parse(currentGame);
+				if (current.status !== "waiting_for_players") {
+					await this.redis.unwatch();
+					return false;
+				}
+
+				const result = await this.redis
+					.multi()
+					.set(gameKey, JSON.stringify(updatedData), { XX: true, EX: CASEBATTLE_EXPIRY })
+					.exec();
+
+				if (result !== null) {
+					return true;
+				}
+
+				console.log(
+					`Casebattle join attempt ${attempt + 1} failed due to concurrent modification, retrying...`,
+				);
+				await this.delay(RETRY_DELAY);
+			} catch (error) {
+				console.error(`Error joining casebattle: ${error}`);
+				await this.delay(RETRY_DELAY);
+			}
+		}
+
+		return false;
+	}
+
+	async getCaseBattle(id: string): Promise<CaseBattleData | null> {
+		const data = await this.redis.get(this.getKey("game", id));
+		return data ? JSON.parse(data) : null;
+	}
+
+	async getActiveCaseBattles(serverId?: string): Promise<string[]> {
+		if (serverId) {
+			return this.redis.sInter(["casebattles:global", this.getKey("server", serverId)]);
+		}
+		return this.redis.sMembers("casebattles:global");
+	}
+
+	async cancelCaseBattle(id: string, data: CaseBattleData): Promise<boolean> {
+		const gameKey = this.getKey("game", id);
+		const playerKey = this.getKey("player", data.players[0].id);
+		const serverKey = this.getKey("server", data.server_id);
+
+		const multi = this.redis
+			.multi()
+			.del([gameKey])
+			.del([playerKey])
+			.sRem(serverKey, id)
+			.sRem("casebattles:global", id);
+
+		if (data.players.length > 1) {
+			data.players.forEach((player) => {
+				this.redis.del(this.getKey("player", player.id));
+			});
+		}
+
+		const result = await multi.exec();
+		return result !== null;
+	}
+
+	async getCases(caseId?: string): Promise<
+		{
+			items: ItemRow[];
+			id: string;
+			name: string;
+			slug: string;
+			image: string;
+			price: number;
+			total_opened: number;
+			created_at: Date;
+		}[]
+	> {
+		const BASE_KEY = "casebattle:cases";
+		const TTL = 3600;
+
+		if (caseId) {
+			const singleKey = `${BASE_KEY}:${caseId}`;
+			const cached = await this.redis.get(singleKey);
+			if (cached) return [JSON.parse(cached)];
+		} else {
+			const keys: string[] = [];
+			for await (const key of this.redis.scanIterator({
+				MATCH: `${BASE_KEY}:*`,
+				COUNT: 100,
+			})) {
+				keys.push(key);
+			}
+			if (keys.length) {
+				const cachedArr = await this.redis.mGet(keys);
+				const parsed = cachedArr.filter((v): v is string => !!v).map((v) => JSON.parse(v));
+				if (parsed.length === keys.length) {
+					return parsed;
+				}
+			}
+		}
+
+		const connection = await getMariaConnection();
+		if (!connection) return [];
+
+		const cases: CaseRow[] = caseId
+			? await smartQuery(connection, "SELECT * FROM casebattle_cases WHERE id = ?", [caseId])
+			: await smartQuery(connection, "SELECT * FROM casebattle_cases");
+
+		const items: ItemRow[] = await smartQuery(connection, "SELECT * FROM casebattle_items");
+		await connection.release();
+
+		const caseItems: Record<string, ItemRow[]> = {};
+		for (const item of items) {
+			(caseItems[item.case_id] ??= []).push(item);
+		}
+
+		const result = cases.map((c) => ({
+			...c,
+			items: caseItems[c.id] || [],
+		}));
+
+		const pipeline = this.redis.multi();
+		for (const c of result) {
+			const key = `${BASE_KEY}:${c.id}`;
+			pipeline.set(key, JSON.stringify(c), { EX: TTL });
+		}
+		await pipeline.exec();
+
+		return result;
+	}
+
+	async startCaseBattle(id: string): Promise<boolean> {
+		const gameKey = this.getKey("game", id);
+		const currentGame = await this.redis.get(gameKey);
+		if (!currentGame) return false;
+
+		let current: CaseBattleData = JSON.parse(currentGame);
+		if (current.status !== "waiting_for_players") return false;
+		await this.redis.set(
+			gameKey,
+			JSON.stringify({ ...current, status: "in_progress", started_at: Date.now(), updated_at: Date.now() }),
+			{
+				XX: true,
+				EX: CASEBATTLE_EXPIRY,
+			},
+		);
+
+		for (const [index, caseId] of current.cases.entries()) {
+			const [caseData] = await this.getCases(caseId);
+			if (!caseData) return false;
+			const currentGameData = await this.redis.get(gameKey);
+			if (!currentGameData) return false;
+			current = JSON.parse(currentGameData);
+
+			for (const player of current.players) {
+				const { result, hash, roll } = randomCaseBattleSpin(
+					caseData.items,
+					player.client_seed,
+					current.server_seed,
+					index,
+				);
+
+				if (!current.player_pulls[player.id]) current.player_pulls[player.id] = { items: [], total_value: 0 };
+				current.player_pulls[player.id].items.push({
+					id: result.id,
+					roll: roll,
+					hash: hash,
+					case_index: index,
+					value: result.value,
+				});
+				current.player_pulls[player.id].total_value += result.value;
+			}
+
+			current.current_spin_data.current_case_index = index;
+			await this.redis.set(gameKey, JSON.stringify({ ...current, updated_at: Date.now() }), {
+				XX: true,
+				EX: CASEBATTLE_EXPIRY,
+			});
+
+			if (index === current.cases.length - 1) {
+				await this.delay(300);
+			} else {
+				await this.delay((current.fast_mode ? 2.5 : 4) * 1000 + 300);
+			}
+		}
+
+		let winningPlayers: { player_id: string; amount_won: number }[] = [];
+		if (current.mode === "group") {
+			winningPlayers = groupModeHandler(current);
+		} else if (current.mode === "randomized") {
+			winningPlayers = randomizerModeHandler(current);
+		} else if (current.mode === "showdown") {
+			winningPlayers = showdownModeHandler(current);
+		} else if (current.mode === "standard") {
+			winningPlayers = standardModeHandler(current);
+		}
+
+		await this.redis.set(
+			gameKey,
+			JSON.stringify({
+				...current,
+				winners_info: winningPlayers,
+				completed_at: Date.now(),
+				status: "completed",
+				updated_at: Date.now(),
+			}),
+			{
+				XX: true,
+				EX: CASEBATTLE_EXPIRY,
+			},
+		);
+
+		const maria = await getMariaConnection();
+		const values = winningPlayers
+			.filter((player) => !player.player_id.startsWith("bot_"))
+			.map((player) => [player.player_id, player.amount_won]);
+		if (values.length > 0) {
+			await maria.query(
+				`INSERT INTO external_cash_change_requests (user_id, amount, status) VALUES ${values
+					.map(() => "(?, ?, 'pending')")
+					.join(", ")}`,
+				values.flat(),
+			);
+		}
+		await maria.release();
+
+		return true;
+	}
+}

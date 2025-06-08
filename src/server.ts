@@ -8,19 +8,9 @@ import { FastifyRequest, FastifyReply } from "fastify";
 
 dotenv.config();
 
-import indexRoute from "./routes/index";
-import userRoutes from "./routes/users";
-import marketplaceRoutes from "./routes/marketplace";
-import casesRoutes from "./routes/cases";
-import itemRoutes from "./routes/items";
-import coinflipRoutes from "./routes/coinflip";
-import tradingRoutes from "./routes/trading";
-import statisticsRoutes from "./routes/statistics";
 import { metricsPlugin, requestCounter, rpsCounter } from "./middleware/metrics";
-import casebattleRoutes from "./routes/casebattles";
-import discordRoutes from "./routes/discord";
+import { registerAllRoutes } from "./utilities/routeHandler";
 
-// Extend FastifyRequest type to include startTime
 declare module "fastify" {
 	interface FastifyRequest {
 		startTime?: [number, number];
@@ -47,7 +37,6 @@ if (cluster.isPrimary) {
 
 	const start = async () => {
 		try {
-			// Register CORS plugin
 			await server.register(fastifyCors, {
 				origin: ["https://trcs.frazers.co"],
 				methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
@@ -55,7 +44,6 @@ if (cluster.isPrimary) {
 			});
 
 			server.addHook("onRequest", async (request: FastifyRequest, reply: FastifyReply) => {
-				// Skip monitoring for /metrics endpoint
 				if (request.url === "/metrics") return;
 				console.log(`Request received: ${request.url}`);
 				request.startTime = process.hrtime();
@@ -71,21 +59,8 @@ if (cluster.isPrimary) {
 				rpsCounter.inc({ method, route });
 			});
 
-			// Register metrics plugin (only for /metrics endpoint)
 			await server.register(metricsPlugin);
-
-			// Register all routes
-			await server.register(indexRoute);
-			await server.register(userRoutes);
-			await server.register(marketplaceRoutes);
-			await server.register(casesRoutes);
-			await server.register(itemRoutes);
-			await server.register(coinflipRoutes);
-			await server.register(tradingRoutes);
-			await server.register(statisticsRoutes);
-			await server.register(casebattleRoutes);
-			await server.register(discordRoutes);
-
+			await registerAllRoutes(server);
 			await server.listen({ port: 3000, host: "0.0.0.0" });
 
 			console.log(`Worker ${process.pid} is running on port 3000`);
