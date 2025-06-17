@@ -5,6 +5,16 @@ import getItemString from "../../utilities/getItemString";
 import getUserInfo from "../../utilities/getUserInfo";
 import doSelfHttpRequest from "../../utilities/internalRequest";
 import { CoinflipRedisManager } from "../../service/coinflip-redis";
+import { z } from "zod";
+
+const joinParamsSchema = z.object({
+	coinflip_id: z.string(),
+});
+
+const joinBodySchema = z.object({
+	user_id: z.number(),
+	items: z.array(z.string().regex(/^FF/)).min(1),
+});
 
 export default {
 	method: "POST",
@@ -16,19 +26,16 @@ export default {
 			Body: { user_id: number; items: string[] };
 		}>,
 	): Promise<[number, any]> {
-		const { coinflip_id } = request.params;
-		const { user_id, items } = request.body;
-
-		if (
-			!user_id ||
-			typeof user_id !== "number" ||
-			!Array.isArray(items) ||
-			!items.every((item) => typeof item === "string" && item.startsWith("FF")) ||
-			!coinflip_id ||
-			typeof coinflip_id !== "string"
-		) {
-			return [400, { error: "Invalid request" }];
+		const paramsParse = joinParamsSchema.safeParse(request.params);
+		const bodyParse = joinBodySchema.safeParse(request.body);
+		if (!paramsParse.success || !bodyParse.success) {
+			return [400, { error: "Invalid request", errors: {
+				params: !paramsParse.success ? paramsParse.error.flatten() : undefined,
+				body: !bodyParse.success ? bodyParse.error.flatten() : undefined,
+			}}];
 		}
+		const { coinflip_id } = paramsParse.data;
+		const { user_id, items } = bodyParse.data;
 
 		const redis = await getRedisConnection();
 		const connection = await getMariaConnection();

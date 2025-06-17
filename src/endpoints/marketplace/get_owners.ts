@@ -1,6 +1,11 @@
 import { FastifyRequest } from "fastify";
 import { getMariaConnection } from "../../service/mariadb";
 import smartQuery from "../../utilities/smartQuery";
+import { z } from "zod";
+
+const ownersParamsSchema = z.object({
+	id: z.string(),
+});
 
 export default {
 	method: "GET",
@@ -13,10 +18,17 @@ export default {
 		}
 
 		try {
+			const paramsParse = ownersParamsSchema.safeParse(request.params);
+			if (!paramsParse.success) {
+				return [400, { error: "Invalid request", errors: paramsParse.error.flatten() }];
+			}
+
+			const { id } = paramsParse.data;
+
 			const owners = await smartQuery(
 				connection,
 				"SELECT i.*, u.name AS username, u.display_name FROM item_copies i LEFT JOIN users u ON i.owner_id = u.user_id WHERE i.item_id = ?;",
-				[request.params.id],
+				[id],
 			);
 
 			return [200, { status: "OK", owners }];

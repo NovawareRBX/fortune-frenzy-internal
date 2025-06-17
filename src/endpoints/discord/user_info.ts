@@ -3,6 +3,7 @@ import { packeter } from "../../utilities/packeter";
 import { getMariaConnection } from "../../service/mariadb";
 import { getRedisConnection } from "../../service/redis";
 import smartQuery from "../../utilities/smartQuery";
+import { z } from "zod";
 
 let USER_FLAGS = [
 	{
@@ -87,6 +88,10 @@ function snowflakeToDate(id: string) {
 	return date;
 }
 
+const discordUserParamsSchema = z.object({
+	user_id: z.string().regex(/^\d+$/),
+});
+
 export default {
 	method: "GET",
 	url: "/discord/user/:user_id",
@@ -96,14 +101,20 @@ export default {
 			Params: { user_id: string };
 		}>,
 	): Promise<[number, any]> {
+		const paramsParse = discordUserParamsSchema.safeParse(request.params);
+		if (!paramsParse.success) {
+			return [400, { error: "Invalid request", errors: paramsParse.error.flatten() }];
+		}
+		const { user_id } = paramsParse.data;
+
 		const redis = await getRedisConnection();
-		const cacheKey = `discord:user:${request.params.user_id}`;
+		const cacheKey = `discord:user:${user_id}`;
 		const cachedData = await redis.get(cacheKey);
 		if (cachedData) {
 			return [200, JSON.parse(cachedData)];
 		}
 
-		const result = await fetch(`https://discord.com/api/v10/users/${request.params.user_id}`, {
+		const result = await fetch(`https://discord.com/api/v10/users/${user_id}`, {
 			headers: {
 				Authorization: `Bot ${process.env.DISCORD_KEY}`,
 			},

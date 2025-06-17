@@ -3,6 +3,16 @@ import { getMariaConnection } from "../../service/mariadb";
 import getRandomWeightedEntry, { Entry } from "../../utilities/getRandomWeightedEntry";
 import smartQuery from "../../utilities/smartQuery";
 import { ItemCase } from "../../types/Endpoints";
+import { z } from "zod";
+
+const openCaseParamsSchema = z.object({
+	id: z.string(),
+});
+
+const openCaseBodySchema = z.object({
+	user_id: z.string().regex(/^\d+$/),
+	lucky: z.boolean(),
+});
 
 export default {
 	method: "POST",
@@ -17,13 +27,18 @@ export default {
 		}
 
 		try {
-			const user_id = request.body.user_id;
-			const lucky = request.body.lucky;
-			if (!user_id || isNaN(parseInt(user_id))) {
-				return [400, { error: "Invalid user_id" }];
+			const paramsParse = openCaseParamsSchema.safeParse(request.params);
+			const bodyParse = openCaseBodySchema.safeParse(request.body);
+			if (!paramsParse.success || !bodyParse.success) {
+				return [400, { error: "Invalid request", errors: {
+					params: !paramsParse.success ? paramsParse.error.flatten() : undefined,
+					body: !bodyParse.success ? bodyParse.error.flatten() : undefined,
+				}}];
 			}
 
-			const id = request.params.id;
+			const { id } = paramsParse.data;
+			const { user_id, lucky } = bodyParse.data;
+
 			const [item_case] = await smartQuery<ItemCase[]>(connection, "SELECT * FROM cases WHERE id = ?", [id]);
 
 			if (!item_case) {

@@ -1,5 +1,15 @@
 import { FastifyRequest } from "fastify";
 import { getMariaConnection } from "../../service/mariadb";
+import { z } from "zod";
+
+const listParamsSchema = z.object({
+	uaid: z.string(),
+});
+
+const listBodySchema = z.object({
+	price: z.number().positive().optional(),
+	expiry: z.number().optional(),
+});
 
 export default {
 	method: "POST",
@@ -14,16 +24,18 @@ export default {
 		}
 
 		try {
-			const { price, expiry } = request.body;
-			const user_asset_id = request.params.uaid;
+			const paramsParse = listParamsSchema.safeParse(request.params);
+			const bodyParse = listBodySchema.safeParse(request.body);
+			if (!paramsParse.success || !bodyParse.success) {
+				return [400, { error: "Invalid request", errors: {
+					params: !paramsParse.success ? paramsParse.error.flatten() : undefined,
+					body: !bodyParse.success ? bodyParse.error.flatten() : undefined,
+				}}];
+			}
+			const { uaid: user_asset_id } = paramsParse.data;
+			const { price, expiry } = bodyParse.data;
 
-			if (!user_asset_id) {
-				return [400, { error: "Missing user_asset_id in parameters" }];
-			}
-			if (typeof user_asset_id !== "string") {
-				return [400, { error: "Invalid user_asset_id, must be a string" }];
-			}
-			if (price === null || price === undefined) {
+			if (price === undefined) {
 				const deleteQuery = `DELETE FROM item_listings WHERE user_asset_id = ?;`;
 				const result = await connection.query(deleteQuery, [user_asset_id]);
 
@@ -34,15 +46,11 @@ export default {
 				return [200, { status: "OK" }];
 			}
 
-			if (typeof price !== "number" || price <= 0) {
-				return [400, { error: "Invalid price, must be a positive number" }];
-			}
-
-			let expiryTimestamp = null;
+			let expiryTimestamp: Date | null = null;
 			if (expiry !== undefined) {
 				const currentTime = Math.floor(Date.now() / 1000);
-				if (typeof expiry !== "number" || expiry <= currentTime) {
-					return [400, { error: "Invalid expiry, must be undefined or a future timestamp" }];
+				if (expiry <= currentTime) {
+					return [400, { error: "Invalid expiry, must be a future timestamp" }];
 				}
 				expiryTimestamp = new Date(expiry * 1000);
 			}

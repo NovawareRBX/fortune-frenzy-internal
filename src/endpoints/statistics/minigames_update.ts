@@ -1,5 +1,18 @@
 import { FastifyRequest } from "fastify";
+import { z } from "zod";
 import { getRedisConnection } from "../../service/redis";
+
+const minigameUpdateParamsSchema = z.object({
+	name: z.string().min(1),
+});
+
+const minigameUpdateBodySchema = z.object({
+	current_ccu: z.number().int().nonnegative(),
+	total_spent: z.number(),
+	total_games_played: z.number(),
+	total_wins: z.number().optional(),
+	total_losses: z.number().optional(),
+});
 
 export default {
 	method: "POST",
@@ -17,16 +30,31 @@ export default {
 			};
 		}>,
 	): Promise<[number, any]> {
-		const redis = await getRedisConnection();
+		// Validate request
+		const paramsParse = minigameUpdateParamsSchema.safeParse(request.params);
+		const bodyParse = minigameUpdateBodySchema.safeParse(request.body);
+		if (!paramsParse.success || !bodyParse.success) {
+			return [
+				400,
+				{
+					error: "Invalid request",
+					errors: {
+						params: !paramsParse.success ? paramsParse.error.flatten() : undefined,
+						body: !bodyParse.success ? bodyParse.error.flatten() : undefined,
+					},
+				},
+			];
+		}
 
+		const { current_ccu, total_spent, total_games_played, total_wins, total_losses } = bodyParse.data;
+		const { name } = paramsParse.data;
+
+		const redis = await getRedisConnection();
 		if (!redis) {
 			return [500, { error: "Failed to connect to the database" }];
 		}
 
 		try {
-			const { current_ccu, total_spent, total_games_played, total_wins, total_losses } = request.body;
-			const { name } = request.params;
-
 			await Promise.all([
 				redis.incrBy(`minigame_stats:${name}:current_ccu`, current_ccu),
 				redis.incrBy(`minigame_stats:${name}:total_spent`, total_spent),

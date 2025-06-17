@@ -1,4 +1,5 @@
 import { FastifyRequest } from "fastify";
+import { z } from "zod";
 import { getMariaConnection } from "../../service/mariadb";
 import smartQuery from "../../utilities/smartQuery";
 
@@ -6,6 +7,11 @@ interface CashChangeRequest {
 	user_id: bigint;
 	amount: bigint;
 }
+
+// Zod schema for headers validation
+const getCashChangesHeadersSchema = z.object({
+	"user-ids": z.string().min(1),
+});
 
 export default {
 	method: "GET",
@@ -18,10 +24,13 @@ export default {
 		}
 
 		try {
-			const userIdsHeader = request.headers["user-ids"] as string;
-			if (!userIdsHeader) {
-				return [400, { error: "Missing user-ids header" }];
+			// Validate headers using Zod
+			const headerParse = getCashChangesHeadersSchema.safeParse(request.headers as any);
+			if (!headerParse.success) {
+				return [400, { error: "Invalid request", errors: headerParse.error.flatten() }];
 			}
+
+			const userIdsHeader = headerParse.data["user-ids"];
 
 			const userIds = userIdsHeader.split(",").map((id) => id.trim());
 			if (!userIds.length) {

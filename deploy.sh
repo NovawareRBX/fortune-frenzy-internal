@@ -34,9 +34,14 @@ fi
 
 colored_echo "$blue" "CURRENT PORT: $current_port"
 colored_echo "$blue" "NEW PORT: $new_port"
-colored_echo "$yellow" "Compiling and building the image..."
 
-run npm run build
+colored_echo "$yellow" "Compiling TypeScript..."
+if ! npm run build; then
+  colored_echo "$red" "Compilation failed. Aborting deployment."
+  exit 1
+fi
+
+colored_echo "$yellow" "Building Docker image..."
 run docker build -t ff-internal-new .
 
 old_container=$(docker ps -q --filter "publish=${new_port}" --filter "ancestor=ff-internal" --filter "network=APIs")
@@ -44,6 +49,12 @@ if [ -n "$old_container" ]; then
   colored_echo "$red" "Removing current container..."
   run docker stop $old_container
   run docker rm $old_container
+fi
+
+if docker ps -a --format '{{.Names}}' | grep -q '^FFInternalNew$'; then
+  colored_echo "$red" "Removing pre-existing FFInternalNew container..."
+  run docker stop FFInternalNew
+  run docker rm FFInternalNew
 fi
 
 run docker run --name FFInternalNew --net APIs --net monitoring -p ${new_port}:3000 -d ff-internal-new

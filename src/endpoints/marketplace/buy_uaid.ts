@@ -2,6 +2,15 @@ import { FastifyRequest } from "fastify";
 import { getMariaConnection } from "../../service/mariadb";
 import { ItemListing } from "../../types/Endpoints";
 import smartQuery from "../../utilities/smartQuery";
+import { z } from "zod";
+
+const buyParamsSchema = z.object({
+	uaid: z.string(),
+});
+
+const buyBodySchema = z.object({
+	buyer_id: z.string().regex(/^\d+$/),
+});
 
 export default {
 	method: "POST",
@@ -16,18 +25,17 @@ export default {
 		}
 
 		try {
-			const body = request.body;
-			const { uaid } = request.params;
-
-			if (!body) {
-				return [400, { error: "Missing body" }];
+			const paramsParse = buyParamsSchema.safeParse(request.params);
+			const bodyParse = buyBodySchema.safeParse(request.body);
+			if (!paramsParse.success || !bodyParse.success) {
+				return [400, { error: "Invalid request", errors: {
+					params: !paramsParse.success ? paramsParse.error.flatten() : undefined,
+					body: !bodyParse.success ? bodyParse.error.flatten() : undefined,
+				}}];
 			}
 
-			const buyerId = Number(body.buyer_id);
-
-			if (!buyerId || isNaN(buyerId)) {
-				return [400, { error: "Invalid buyer_id" }];
-			}
+			const { uaid } = paramsParse.data;
+			const buyerId = Number(bodyParse.data.buyer_id);
 
 			await connection.beginTransaction();
 			const [listing] = await smartQuery<ItemListing[]>(

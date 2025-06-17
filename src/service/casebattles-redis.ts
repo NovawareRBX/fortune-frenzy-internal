@@ -107,9 +107,12 @@ export class CasebattlesRedisManager {
 		return true;
 	}
 
-	async joinCaseBattle(casebattleId: string, updatedData: CaseBattleData): Promise<boolean> {
+	async joinCaseBattle(
+		casebattleId: string,
+		newPlayer: CaseBattleData["players"][number],
+	): Promise<boolean> {
 		const MAX_RETRIES = 3;
-		const RETRY_DELAY = 100;
+		const RETRY_DELAY_MS = 100;
 
 		const gameKey = this.getKey("game", casebattleId);
 
@@ -117,34 +120,63 @@ export class CasebattlesRedisManager {
 			try {
 				await this.redis.watch(gameKey);
 
-				const currentGame = await this.redis.get(gameKey);
-				if (!currentGame) {
+				const currentRaw = await this.redis.get(gameKey);
+				if (!currentRaw) {
 					await this.redis.unwatch();
 					return false;
 				}
 
-				const current: CaseBattleData = JSON.parse(currentGame);
+				const current: CaseBattleData = JSON.parse(currentRaw);
+
 				if (current.status !== "waiting_for_players") {
 					await this.redis.unwatch();
 					return false;
 				}
 
-				const result = await this.redis
+				if (current.players.some((p) => p.id === newPlayer.id)) {
+					await this.redis.unwatch();
+					return false;
+				}
+
+				if (current.players.some((p) => p.position === newPlayer.position)) {
+					await this.redis.unwatch();
+					return false;
+				}
+
+				const maxPlayers = current.team_mode
+					.split("v")
+					.map((n) => parseInt(n, 10))
+					.reduce((sum, n) => sum + n, 0);
+
+				if (current.players.length >= maxPlayers) {
+					await this.redis.unwatch();
+					return false;
+				}
+
+				const updated: CaseBattleData = {
+					...current,
+					players: [...current.players, newPlayer],
+					player_pulls: {
+						...current.player_pulls,
+						[newPlayer.id]: { items: [], total_value: 0 },
+					},
+					updated_at: Date.now(),
+				};
+
+				const execRes = await this.redis
 					.multi()
-					.set(gameKey, JSON.stringify(updatedData), { XX: true, EX: CASEBATTLE_EXPIRY })
+					.set(gameKey, JSON.stringify(updated), { XX: true, EX: CASEBATTLE_EXPIRY })
 					.exec();
 
-				if (result !== null) {
+				if (execRes && !execRes.some((r) => !r)) {
 					return true;
 				}
 
-				console.log(
-					`Casebattle join attempt ${attempt + 1} failed due to concurrent modification, retrying...`,
-				);
-				await this.delay(RETRY_DELAY);
-			} catch (error) {
-				console.error(`Error joining casebattle: ${error}`);
-				await this.delay(RETRY_DELAY);
+				await this.delay(RETRY_DELAY_MS);
+			} catch (err) {
+				await this.redis.unwatch();
+				console.error(`Error joining casebattle: ${err}`);
+				await this.delay(RETRY_DELAY_MS);
 			}
 		}
 

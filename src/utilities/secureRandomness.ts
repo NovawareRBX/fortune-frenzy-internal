@@ -28,12 +28,7 @@ export function randomCoinflip(
 	};
 }
 
-export function randomCaseBattleSpin(
-	items: ItemRow[],
-	clientSeed: string,
-	serverSeed: string,
-	nonce: number,
-) {
+export function randomCaseBattleSpin(items: ItemRow[], clientSeed: string, serverSeed: string, nonce: number) {
 	const hash = crypto.createHash("sha256").update(`${clientSeed}:${serverSeed}:${nonce}`).digest("hex");
 	const roll = parseInt(hash.slice(0, 8), 16) % 100000;
 	return {
@@ -41,6 +36,28 @@ export function randomCaseBattleSpin(
 		roll: roll.toString().padStart(5, "0"),
 		hash,
 	};
+}
+
+export function randomJackpotSpin(
+	players: {
+		player: { id: string; username: string; display_name: string };
+		min_ticket: number;
+		max_ticket: number;
+	}[],
+	clientSeed: string,
+	serverSeed: string,
+) {
+	const hash = crypto.createHash("sha256").update(`${clientSeed}:${serverSeed}`).digest("hex");
+	const roll = parseInt(hash.slice(0, 8), 16) % 100000;
+	const player = players.find((player) => roll >= player.min_ticket && roll <= player.max_ticket)!;
+
+	return {
+		player,
+	};
+}
+
+export function generateServerSeed(): string {
+	return crypto.randomBytes(32).toString("hex");
 }
 
 export function randomNumber(min: number, max: number, serverSeed: string) {

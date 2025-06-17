@@ -1,6 +1,11 @@
 import { FastifyRequest } from "fastify";
 import { getRedisConnection } from "../../service/redis";
 import { CasebattlesRedisManager } from "../../service/casebattles-redis";
+import { z } from "zod";
+
+const battlesQuerySchema = z.object({
+	server_id: z.string().optional(),
+});
 
 export default {
 	method: "GET",
@@ -17,7 +22,11 @@ export default {
 				return [500, { error: "Failed to connect to Redis" }];
 			}
 
-			const { server_id } = request.query;
+			const queryParse = battlesQuerySchema.safeParse(request.query);
+			if (!queryParse.success) {
+				return [400, { message: "Invalid request", errors: queryParse.error.flatten() }];
+			}
+			const { server_id } = queryParse.data;
 			const casebattlesManager = new CasebattlesRedisManager(redis, request.server);
 
 			const casebattleIds = await casebattlesManager.getActiveCaseBattles(server_id);

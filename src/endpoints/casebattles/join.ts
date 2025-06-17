@@ -1,9 +1,10 @@
 import { FastifyRequest } from "fastify";
 import { getRedisConnection } from "../../service/redis";
-import { CaseBattleData, CasebattlesRedisManager } from "../../service/casebattles-redis";
+import { CasebattlesRedisManager } from "../../service/casebattles-redis";
 import { randomBytes } from "crypto";
 import getUserInfo from "../../utilities/getUserInfo";
 import { getMariaConnection } from "../../service/mariadb";
+import { z } from "zod";
 
 const BOT_INFO = [
 	["david.baszucki", 24941],
@@ -100,6 +101,16 @@ const BOT_INFO = [
 	["Cherpl", 351675979],
 ];
 
+const joinBodySchema = z.object({
+	user_id: z.number(),
+	position: z.number(),
+	client_seed: z.string(),
+});
+
+const joinParamsSchema = z.object({
+	id: z.string(),
+});
+
 export default {
 	method: "POST",
 	url: "/casebattles/join/:id",
@@ -114,19 +125,17 @@ export default {
 			Params: { id: string };
 		}>,
 	): Promise<[number, any]> {
-		const { user_id, position, client_seed } = request.body;
-		const { id: casebattleId } = request.params;
-
-		if (
-			!(
-				typeof user_id === "number" &&
-				typeof position === "number" &&
-				typeof client_seed === "string" &&
-				typeof casebattleId === "string"
-			)
-		) {
-			return [400, { message: "Invalid request" }];
+		const bodyParse = joinBodySchema.safeParse(request.body);
+		const paramsParse = joinParamsSchema.safeParse(request.params);
+		if (!bodyParse.success || !paramsParse.success) {
+			return [400, { message: "Invalid request", errors: {
+				body: !bodyParse.success ? bodyParse.error.flatten() : undefined,
+				params: !paramsParse.success ? paramsParse.error.flatten() : undefined,
+			}}];
 		}
+
+		const { user_id, position, client_seed } = bodyParse.data;
+		const { id: casebattleId } = paramsParse.data;
 
 		const redis = await getRedisConnection();
 		if (!redis) return [500, { message: "Failed to connect to Redis" }];
@@ -186,22 +195,9 @@ export default {
 					client_seed,
 			  };
 
-		const updatedCaseBattle: CaseBattleData = {
-			...casebattle,
-			players: [...casebattle.players, newPlayer],
-			player_pulls: {
-				...casebattle.player_pulls,
-				[newPlayer.id]: {
-					items: [],
-					total_value: 0,
-				},
-			},
-			updated_at: Date.now(),
-		};
-
-		const success = await casebattlesRedisManager.joinCaseBattle(casebattleId, updatedCaseBattle);
+		const success = await casebattlesRedisManager.joinCaseBattle(casebattleId, newPlayer);
 		if (!success) {
-			return [409, { message: "Failed to join case battle, it may have started or been modified" }];
+			return [409, { message: "Failed to join case battle, it may have started, filled up, or been modified" }];
 		}
 
 		const newData = await casebattlesRedisManager.getCaseBattle(casebattleId);
@@ -210,6 +206,6 @@ export default {
 		}
 
 		connection.release();
-		return [200, { status: "OK", data: updatedCaseBattle }];
+		return [200, { status: "OK", data: newData }];
 	},
 };

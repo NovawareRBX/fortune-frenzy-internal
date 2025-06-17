@@ -1,15 +1,21 @@
 import { FastifyRequest } from "fastify";
 import { getMariaConnection } from "../../service/mariadb";
 import smartQuery from "../../utilities/smartQuery";
+import { z } from "zod";
+
+const userParamSchema = z.object({ id: z.string().regex(/^\d+$/) });
 
 export default {
 	method: "GET",
 	url: "/users/:id",
 	authType: "none",
 	callback: async function (request: FastifyRequest<{ Params: { id: string } }>): Promise<[number, any]> {
+		const paramsParse = userParamSchema.safeParse(request.params);
+		if (!paramsParse.success) {
+			return [400, { error: "Invalid request", errors: paramsParse.error.flatten() }];
+		}
+		const user_id = parseInt(paramsParse.data.id);
 		const connection = await getMariaConnection();
-		const user_id = parseInt(request.params.id);
-		if (isNaN(user_id)) return [400, { error: "Invalid user ID" }];
 		if (!connection) return [500, { error: "Failed to connect to the database" }];
 
 		try {

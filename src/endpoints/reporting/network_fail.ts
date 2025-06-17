@@ -2,6 +2,21 @@ import { FastifyRequest } from "fastify";
 import { getMariaConnection } from "../../service/mariadb";
 import { ItemListing } from "../../types/Endpoints";
 import smartQuery from "../../utilities/smartQuery";
+import { z } from "zod";
+
+const networkFailSchema = z.object({
+	network: z.string(),
+	networkData: z.object({
+		name: z.string(),
+		globalName: z.string(),
+		eventType: z.enum(["Event", "Function"]),
+	}),
+	incorrectArg: z.object({
+		index: z.number().optional(),
+		value: z.string(),
+	}),
+	player: z.number(),
+});
 
 export default {
 	method: "POST",
@@ -30,18 +45,23 @@ export default {
 		}
 
 		try {
+			const parseResult = networkFailSchema.safeParse(request.body);
+			if (!parseResult.success) {
+				return [400, { error: "Invalid request", errors: parseResult.error.flatten() }];
+			}
+			const body = parseResult.data;
 			// log into the database
 			const [result] = await smartQuery(
 				connection,
 				"INSERT INTO roblox_network_logs (error_type, nwi_name, nwi_globalName, nwi_eventType, incorrectArg_index, incorrectArg_value, playerId) VALUES (?, ?, ?, ?, ?, ?, ?)",
 				[
-					request.body.network,
-					request.body.networkData.name,
-					request.body.networkData.globalName,
-					request.body.networkData.eventType,
-					request.body.incorrectArg.index,
-					request.body.incorrectArg.value,
-					request.body.player,
+					body.network,
+					body.networkData.name,
+					body.networkData.globalName,
+					body.networkData.eventType,
+					body.incorrectArg.index,
+					body.incorrectArg.value,
+					body.player,
 				],
 			);
 

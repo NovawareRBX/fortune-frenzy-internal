@@ -1,4 +1,10 @@
 import { FastifyRequest } from "fastify";
+import { z } from "zod";
+
+const searchUsersQuerySchema = z.object({
+	keywords: z.string().optional(),
+	limit: z.string().regex(/^\d+$/).optional(),
+});
 
 export default {
 	method: "GET",
@@ -7,8 +13,14 @@ export default {
 	callback: async function (
 		request: FastifyRequest<{ Querystring: { keywords?: string; limit?: string } }>,
 	): Promise<[number, any]> {
-		const query = (request.query.keywords || "").trim().toLowerCase();
-		const limit = parseInt(request.query.limit || "40");
+		// Validate querystring using Zod
+		const queryParse = searchUsersQuerySchema.safeParse(request.query);
+		if (!queryParse.success) {
+			return [400, { error: "Invalid query", errors: queryParse.error.flatten() }];
+		}
+
+		const query = (queryParse.data.keywords || "").trim().toLowerCase();
+		const limit = queryParse.data.limit ? parseInt(queryParse.data.limit, 10) : 40;
 		if (limit < 1 || limit > 40) return [400, { error: "Limit must be between 1 and 40" }];
 
 		try {

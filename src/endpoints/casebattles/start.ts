@@ -3,6 +3,11 @@ import { getRedisConnection } from "../../service/redis";
 import { CasebattlesRedisManager } from "../../service/casebattles-redis";
 import getUserInfo from "../../utilities/getUserInfo";
 import { getMariaConnection } from "../../service/mariadb";
+import { z } from "zod";
+
+const startParamsSchema = z.object({
+	id: z.string(),
+});
 
 export default {
 	method: "POST",
@@ -13,7 +18,11 @@ export default {
 			Params: { id: string };
 		}>,
 	): Promise<[number, any]> {
-		const { id } = request.params;
+		const paramsParse = startParamsSchema.safeParse(request.params);
+		if (!paramsParse.success) {
+			return [400, { message: "Invalid request", errors: paramsParse.error.flatten() }];
+		}
+		const { id } = paramsParse.data;
 		const redis = await getRedisConnection();
 		if (!redis) return [500, { message: "Failed to connect to Redis" }];
 		const connection = await getMariaConnection();

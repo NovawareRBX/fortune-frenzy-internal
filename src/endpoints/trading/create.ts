@@ -1,10 +1,18 @@
 import { FastifyRequest } from "fastify";
+import { z } from "zod";
 import { getMariaConnection } from "../../service/mariadb";
 import { Trade, TradeItem } from "../../types/Endpoints";
 import smartQuery from "../../utilities/smartQuery";
 import doSelfHttpRequest from "../../utilities/internalRequest";
 import getUserInfo from "../../utilities/getUserInfo";
 import getItemString from "../../utilities/getItemString";
+
+const tradeCreateBodySchema = z.object({
+	initiator_id: z.string().regex(/^\d+$/),
+	receiver_id: z.string().regex(/^\d+$/),
+	initiator_items: z.array(z.string().regex(/^FF.+/)).nonempty(),
+	receiver_items: z.array(z.string().regex(/^FF.+/)).nonempty(),
+});
 
 export default {
 	method: "POST",
@@ -20,28 +28,20 @@ export default {
 			};
 		}>,
 	): Promise<[number, any]> {
+		// Validate body using Zod
+		const bodyParse = tradeCreateBodySchema.safeParse(request.body);
+		if (!bodyParse.success) {
+			return [400, { error: "Invalid request", errors: bodyParse.error.flatten() }];
+		}
+
+		const { initiator_id, receiver_id, initiator_items, receiver_items } = bodyParse.data;
+
 		const connection = await getMariaConnection();
 		if (!connection) {
 			return [500, { error: "Failed to connect to the database" }];
 		}
 
 		try {
-			// validate request body
-			if (
-				!request.body ||
-				typeof request.body.initiator_id !== "string" ||
-				typeof request.body.receiver_id !== "string" ||
-				!Array.isArray(request.body.initiator_items) ||
-				!Array.isArray(request.body.receiver_items) ||
-				!request.body.initiator_items.every((item) => typeof item === "string" && item.startsWith("FF")) ||
-				!request.body.receiver_items.every((item) => typeof item === "string" && item.startsWith("FF")) ||
-				request.body.initiator_items.length === 0 ||
-				request.body.receiver_items.length === 0
-			) {
-				return [400, { error: "Invalid request" }];
-			}
-
-			const { initiator_id, receiver_id, initiator_items, receiver_items } = request.body;
 			const existing_trades = await smartQuery(
 				connection,
 				`

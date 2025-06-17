@@ -6,6 +6,11 @@ import { CoinflipData } from "./create";
 import doSelfHttpRequest from "../../utilities/internalRequest";
 import { getMariaConnection } from "../../service/mariadb";
 import { CoinflipRedisManager } from "../../service/coinflip-redis";
+import { z } from "zod";
+
+const startParamsSchema = z.object({
+	coinflip_id: z.string(),
+});
 
 export default {
 	method: "POST",
@@ -16,11 +21,12 @@ export default {
 			Params: { coinflip_id: string };
 		}>,
 	): Promise<[number, any]> {
-		if (!request.params.coinflip_id || typeof request.params.coinflip_id !== "string") {
-			return [400, { error: "Invalid request" }];
+		const paramsParse = startParamsSchema.safeParse(request.params);
+		if (!paramsParse.success) {
+			return [400, { error: "Invalid request", errors: paramsParse.error.flatten() }];
 		}
+		const { coinflip_id: id } = paramsParse.data;
 
-		const id = request.params.coinflip_id;
 		const redis = await getRedisConnection();
 		const maria = await getMariaConnection();
 

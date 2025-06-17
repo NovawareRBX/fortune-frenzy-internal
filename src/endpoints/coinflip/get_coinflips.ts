@@ -1,6 +1,11 @@
 import { FastifyRequest } from "fastify";
 import { getRedisConnection } from "../../service/redis";
 import { CoinflipRedisManager } from "../../service/coinflip-redis";
+import { z } from "zod";
+
+const coinflipQuerySchema = z.object({
+	server_id: z.string().optional(),
+});
 
 export default {
 	method: "GET",
@@ -17,7 +22,11 @@ export default {
 				return [500, { error: "Failed to connect to Redis" }];
 			}
 
-			const { server_id } = request.query;
+			const queryParse = coinflipQuerySchema.safeParse(request.query);
+			if (!queryParse.success) {
+				return [400, { error: "Invalid request", errors: queryParse.error.flatten() }];
+			}
+			const { server_id } = queryParse.data;
 			const coinflipManager = new CoinflipRedisManager(redis, request.server);
 
 			const coinflipIds = await coinflipManager.getActiveCoinflips(server_id);

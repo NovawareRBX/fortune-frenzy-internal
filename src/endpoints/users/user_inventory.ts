@@ -1,6 +1,11 @@
 import { FastifyReply, FastifyRequest } from "fastify";
+import { z } from "zod";
 import { getMariaConnection } from "../../service/mariadb";
 import smartQuery from "../../utilities/smartQuery";
+
+const userInventoryParamsSchema = z.object({
+	id: z.string().regex(/^\d+$/),
+});
 
 export default {
 	method: "GET",
@@ -13,7 +18,13 @@ export default {
 		}
 
 		try {
-			const user_id = request.params.id;
+			// Validate params using Zod
+			const paramsParse = userInventoryParamsSchema.safeParse(request.params);
+			if (!paramsParse.success) {
+				return [400, { error: "Invalid request", errors: paramsParse.error.flatten() }];
+			}
+			const user_id = paramsParse.data.id;
+
 			await connection.query("INSERT IGNORE INTO users (user_id) VALUES (?)", [user_id]);
 
 			const rows = await smartQuery(

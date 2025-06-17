@@ -1,10 +1,15 @@
 import { FastifyRequest } from "fastify";
+import { z } from "zod";
 import { getMariaConnection } from "../../service/mariadb";
 import { Trade, TradeItem } from "../../types/Endpoints";
 import smartQuery from "../../utilities/smartQuery";
 import getUserInfo from "../../utilities/getUserInfo";
 import getItemString from "../../utilities/getItemString";
 import doSelfHttpRequest from "../../utilities/internalRequest";
+
+const tradeAcceptParamsSchema = z.object({
+	trade_id: z.string().regex(/^\d+$/),
+});
 
 export default {
 	method: "POST",
@@ -13,18 +18,22 @@ export default {
 	callback: async function accept_trade(
 		request: FastifyRequest<{ Params: { trade_id: string } }>,
 	): Promise<[number, any]> {
+		// Validate params using Zod
+		const paramsParse = tradeAcceptParamsSchema.safeParse(request.params);
+		if (!paramsParse.success) {
+			return [400, { error: "Invalid request", errors: paramsParse.error.flatten() }];
+		}
+
+		const { trade_id } = paramsParse.data;
+
 		const connection = await getMariaConnection();
 		if (!connection) {
 			return [500, { error: "Failed to connect to the database" }];
 		}
 
 		try {
-			if (isNaN(Number(request.params.trade_id))) {
-				return [400, { error: "Invalid trade_id" }];
-			}
-
 			const [trade_data] = (await smartQuery(connection, `SELECT * FROM trades WHERE trade_id = ?`, [
-				request.params.trade_id,
+				trade_id,
 			])) as Trade[];
 
 			if (!trade_data) return [404, { error: "Trade not found" }];
@@ -37,7 +46,7 @@ export default {
 
 			if (response.statusCode !== 200) {
 				await smartQuery(connection, `UPDATE trades SET status = 'failed' WHERE trade_id = ?`, [
-					request.params.trade_id,
+					trade_id,
 				]);
 
 				if (response.statusCode === 403) return [400, { error: "One or more items owner changed" }];
@@ -46,7 +55,7 @@ export default {
 			}
 
 			await smartQuery(connection, `UPDATE trades SET status = 'accepted' WHERE trade_id = ?`, [
-				request.params.trade_id,
+				trade_id,
 			]);
 
 			return [

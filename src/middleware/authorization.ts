@@ -9,10 +9,11 @@ export async function authorization(
 ): Promise<boolean> {
 	const redis = await getRedisConnection();
 
-	const validateHeaders = (headers: string[]) => {
+	const validateHeaders = (headers: string[]): boolean => {
 		for (const header of headers) {
 			if (!request.headers[header]) return false;
 		}
+		return true;
 	};
 
 	const validateInternalAuth = async (): Promise<boolean> => {
@@ -27,9 +28,8 @@ export async function authorization(
 	};
 
 	const validateServerKey = async (): Promise<boolean> => {
-		validateHeaders(["x-api-key"]);
-		if (request.headers["x-api-key"] === process.env.AUTHENTICATION_KEY) return true;
-		return false;
+		if (!validateHeaders(["x-api-key"])) return false;
+		return request.headers["x-api-key"] === process.env.AUTHENTICATION_KEY;
 	};
 
 	if (requiredHeaders) validateHeaders(requiredHeaders);

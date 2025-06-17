@@ -2,6 +2,17 @@ import { FastifyReply, FastifyRequest } from "fastify";
 import { getMariaConnection } from "../../service/mariadb";
 import smartQuery from "../../utilities/smartQuery";
 import countries from "../../utilities/countries.json";
+import { z } from "zod";
+
+const postUserParamsSchema = z.object({
+	id: z.string().regex(/^\d+$/),
+});
+
+const postUserBodySchema = z.object({
+	name: z.string().min(1).optional(),
+	display_name: z.string().min(1).optional(),
+	country: z.string().optional(),
+});
 
 export default {
 	method: "POST",
@@ -19,22 +30,23 @@ export default {
 		}
 
 		try {
-			const { name = "Unknown", display_name = "Unknown", country = "Unknown" } = request.body;
-			const user_id = request.params.id;
-
-			if (typeof name !== "string" || name.trim() === "") {
-				return [400, { error: "Invalid 'name' provided" }];
+			const paramsParse = postUserParamsSchema.safeParse(request.params);
+			const bodyParse = postUserBodySchema.safeParse(request.body);
+			if (!paramsParse.success || !bodyParse.success) {
+				return [
+					400,
+					{
+						error: "Invalid request",
+						errors: {
+							params: !paramsParse.success ? paramsParse.error.flatten() : undefined,
+							body: !bodyParse.success ? bodyParse.error.flatten() : undefined,
+						},
+					},
+				];
 			}
-
-			if (typeof display_name !== "string" || display_name.trim() === "") {
-				return [400, { error: "Invalid 'display_name' provided" }];
-			}
-
-			if (typeof user_id !== "string" || user_id.trim() === "") {
-				return [400, { error: "Invalid 'id' provided" }];
-			}
-
-			if (typeof country !== "string" || country.trim() === "" || !countries.hasOwnProperty(country)) {
+			const user_id = paramsParse.data.id;
+			let { name = "Unknown", display_name = "Unknown", country = "Unknown" } = bodyParse.data;
+			if (!(country in countries)) {
 				return [400, { error: "Invalid 'country' provided" }];
 			}
 

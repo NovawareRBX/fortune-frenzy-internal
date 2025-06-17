@@ -5,7 +5,7 @@ import { randomBytes } from "crypto";
 export default async function (server: FastifyInstance, inject: InjectOptions) {
 	const redis = await getRedisConnection();
 	const key = randomBytes(16).toString("hex");
-	redis.set(`tempauth:${key}`, key, { EX: 60 });
+	await redis.set(`tempauth:${key}`, key, { EX: 60 });
 
 	return await server.inject({
 		...inject,

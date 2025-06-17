@@ -32,7 +32,10 @@ export async function registerAllRoutes(fastify: FastifyInstance) {
 			const relativePath = path.relative(path.join(process.cwd(), 'src'), file);
 			const distPath = path.join(process.cwd(), 'dist', relativePath.replace(/\.ts$/, '.js'));
 			const route = require(distPath).default;
-			if (!route?.method || !route?.url || !route?.callback) continue;
+			if (!route?.method || !route?.url || !route?.callback) {
+				console.log("Error loading route: ", file);
+				continue;
+			}
 
 			fastify.route({
 				method: route.method,
@@ -55,8 +58,6 @@ export async function registerAllRoutes(fastify: FastifyInstance) {
 					logRequest(request, reply, body, time);
 				},
 			});
-
-			console.log(`[route] ${route.method} ${route.url}`);
 		} catch (error) {
 			console.error(`Error loading route ${file}:`, error);
 		}

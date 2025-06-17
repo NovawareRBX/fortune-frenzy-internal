@@ -23,10 +23,41 @@ export class CoinflipRedisManager {
 		return new Promise((resolve) => setTimeout(resolve, ms));
 	}
 
+	private async hasActiveCoinflip(userId: string): Promise<boolean> {
+		const userKey = this.getKey("user", userId);
+		const existingId = await this.redis.get(userKey);
+		if (!existingId) return false;
+
+		const existingGameRaw = await this.redis.get(this.getKey("game", existingId));
+		if (!existingGameRaw) {
+			await this.redis.del(userKey);
+			return false;
+		}
+
+		try {
+			const existingGame: CoinflipData = JSON.parse(existingGameRaw);
+			const inactive = existingGame.status === "completed" || existingGame.status === "failed";
+			if (inactive) {
+				await this.redis.del(userKey);
+				return false;
+			}
+			return true;
+		} catch {
+			await this.redis.del(userKey);
+			return false;
+		}
+	}
+
 	async createCoinflip(data: CoinflipData): Promise<boolean> {
-		const lockKey = this.getKey("lock", data.player1.id.toString());
+		const playerIdStr = data.player1.id.toString();
+
+		if (await this.hasActiveCoinflip(playerIdStr)) {
+			return false;
+		}
+
+		const lockKey = this.getKey("lock", playerIdStr);
 		const coinflipKey = this.getKey("game", data.id);
-		const userKey = this.getKey("user", data.player1.id.toString());
+		const userKey = this.getKey("user", playerIdStr);
 
 		const result = await this.redis
 			.multi()
@@ -49,10 +80,15 @@ export class CoinflipRedisManager {
 		const MAX_RETRIES = 3;
 		const RETRY_DELAY = 100;
 
+		const playerIdStr = userId.toString();
 		const gameKey = this.getKey("game", coinflipId);
-		const userKey = this.getKey("user", userId.toString());
+		const userKey = this.getKey("user", playerIdStr);
 
 		for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+			if (await this.hasActiveCoinflip(playerIdStr)) {
+				return false;
+			}
+
 			try {
 				await this.redis.watch(gameKey);
 
@@ -74,11 +110,13 @@ export class CoinflipRedisManager {
 					.set(userKey, coinflipId, { NX: true, EX: COINFLIP_EXPIRY })
 					.exec();
 
-				if (result !== null) {
+				if (result && !result.some((reply) => !reply)) {
 					return true;
 				}
 
-				console.log(`Coinflip join attempt ${attempt + 1} failed due to concurrent modification, retrying...`);
+				console.log(
+					`Coinflip join attempt ${attempt + 1} failed due to concurrent modification, retrying...`,
+				);
 				await this.delay(RETRY_DELAY);
 			} catch (error) {
 				await this.redis.unwatch();
@@ -176,7 +214,7 @@ export class CoinflipRedisManager {
 				method: "POST",
 				url: `/items/item-transfer/${transferId}/cancel`,
 				body: {
-					reason: "Coinflip expired - automatic cancellation"
+					reason: "Coinflip expired - automatic cancellation",
 				},
 			});
 

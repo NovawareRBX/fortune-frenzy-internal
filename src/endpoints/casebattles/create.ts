@@ -4,6 +4,8 @@ import { CaseBattleData, CasebattlesRedisManager } from "../../service/casebattl
 import { randomBytes, randomUUID } from "crypto";
 import getUserInfo from "../../utilities/getUserInfo";
 import { getMariaConnection } from "../../service/mariadb";
+import { generateServerSeed } from "../../utilities/secureRandomness";
+import { z } from "zod";
 
 async function getCasesFromIDs(cbrm: CasebattlesRedisManager, ids: string[]) {
 	const cachedCases = await cbrm.getCases();
@@ -28,6 +30,17 @@ async function getCasesFromIDs(cbrm: CasebattlesRedisManager, ids: string[]) {
 		});
 }
 
+const createCaseBattleSchema = z.object({
+	user_id: z.number(),
+	client_seed: z.string(),
+	cases: z.array(z.string()).min(1),
+	mode: z.enum(["Standard", "Randomized", "Showdown", "Group"]),
+	team_mode: z.enum(["1v1", "1v1v1", "1v1v1v1", "2v2"]),
+	fast_mode: z.boolean(),
+	crazy: z.boolean(),
+	server_id: z.string(),
+});
+
 export default {
 	method: "POST",
 	url: "/casebattles/create",
@@ -46,29 +59,15 @@ export default {
 			};
 		}>,
 	): Promise<[number, any]> {
-		const body = request.body;
-		// Validate request body and collect any invalid fields for detailed logging
-		const invalidFields: string[] = [];
-		if (typeof body !== "object") {
-			invalidFields.push("body_type");
-		} else {
-			if (typeof body.user_id !== "number") invalidFields.push("user_id");
-			if (!Array.isArray(body.cases)) {
-				invalidFields.push("cases");
-			} else if (!body.cases.every((item: any) => typeof item === "string")) {
-				invalidFields.push("cases_items");
-			}
-			if (!["Standard", "Randomized", "Showdown", "Group"].includes(body.mode)) invalidFields.push("mode");
-			if (!["1v1", "1v1v1", "1v1v1v1", "2v2"].includes(body.team_mode)) invalidFields.push("team_mode");
-			if (typeof body.fast_mode !== "boolean") invalidFields.push("fast_mode");
-			if (typeof body.crazy !== "boolean") invalidFields.push("crazy");
-			if (typeof body.server_id !== "string") invalidFields.push("server_id");
+		const parseResult = createCaseBattleSchema.safeParse(request.body);
+		if (!parseResult.success) {
+			request.log.warn(
+				{ errors: parseResult.error.flatten(), body: request.body },
+				"400 - Invalid request body for /casebattles/create",
+			);
+			return [400, { message: "Invalid request", errors: parseResult.error.flatten() }];
 		}
-
-		if (invalidFields.length > 0) {
-			request.log.warn({ invalidFields, body }, `400 - Invalid request: invalid field(s) -> ${invalidFields.join(", ")}`);
-			return [400, { message: "Invalid request" }];
-		}
+		const body = parseResult.data;
 
 		const redis = await getRedisConnection();
 		if (!redis) return [500, { message: "Failed to connect to Redis" }];
@@ -86,14 +85,17 @@ export default {
 		}
 
 		if (cases.length === 0 || cases.length !== body.cases.length) {
-			console.log({ requested_case_ids: body.cases, resolved_case_ids: cases.map(c => c.id) }, "400 - Invalid case IDs supplied for /casebattles/create");
+			console.log(
+				{ requested_case_ids: body.cases, resolved_case_ids: cases.map((c) => c.id) },
+				"400 - Invalid case IDs supplied for /casebattles/create",
+			);
 			return [400, { message: "Invalid case IDs" }];
 		}
 
 		const casebattle: CaseBattleData = {
 			id: casebattleId,
 			server_id: body.server_id,
-			server_seed: randomBytes(16).toString("hex"),
+			server_seed: generateServerSeed(),
 			team_mode: body.team_mode,
 			crazy: body.crazy,
 			mode: body.mode,

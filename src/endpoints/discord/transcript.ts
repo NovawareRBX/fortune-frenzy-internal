@@ -2,6 +2,11 @@ import { FastifyRequest } from "fastify";
 import { packeter } from "../../utilities/packeter";
 import { getMariaConnection } from "../../service/mariadb";
 import smartQuery from "../../utilities/smartQuery";
+import { z } from "zod";
+
+const transcriptParamsSchema = z.object({
+	transcript_id: z.string(),
+});
 
 export default {
 	method: "GET",
@@ -12,9 +17,15 @@ export default {
 			Params: { transcript_id: string };
 		}>,
 	): Promise<[number, any]> {
+		const paramsParse = transcriptParamsSchema.safeParse(request.params);
+		if (!paramsParse.success) {
+			return [400, { error: "Invalid request", errors: paramsParse.error.flatten() }];
+		}
+		const { transcript_id } = paramsParse.data;
+
 		const maria = await getMariaConnection("NovawareDiscord");
 		const transcript = await smartQuery(maria, "SELECT * FROM ticket_transcripts WHERE transcript_id = ?", [
-			request.params.transcript_id,
+			transcript_id,
 		]);
 
 		if (transcript.length === 0) {

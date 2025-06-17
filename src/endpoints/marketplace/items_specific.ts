@@ -1,6 +1,11 @@
 import { FastifyReply, FastifyRequest } from "fastify";
 import { getMariaConnection } from "../../service/mariadb";
 import smartQuery from "../../utilities/smartQuery";
+import { z } from "zod";
+
+const itemParamsSchema = z.object({
+	id: z.string(),
+});
 
 export default {
 	method: "GET",
@@ -13,7 +18,12 @@ export default {
 		}
 
 		try {
-			const item_id = request.params.id;
+			const paramsParse = itemParamsSchema.safeParse(request.params);
+			if (!paramsParse.success) {
+				return [400, { error: "Invalid request", errors: paramsParse.error.flatten() }];
+			}
+			const { id: item_id } = paramsParse.data;
+
 			const [result] = await smartQuery(connection, "SELECT * FROM items WHERE id = ?", [item_id]);
 
 			if (!result) {

@@ -1,9 +1,14 @@
 import { FastifyRequest } from "fastify";
+import { z } from "zod";
 import { getMariaConnection } from "../../service/mariadb";
 import { Trade, TradeItem } from "../../types/Endpoints";
 import smartQuery from "../../utilities/smartQuery";
 import getUserInfo from "../../utilities/getUserInfo";
 import getItemString from "../../utilities/getItemString";
+
+const getTradesParamsSchema = z.object({
+	user_ids: z.string().regex(/^\d+(,\d+)*$/),
+});
 
 export default {
 	method: "GET",
@@ -12,13 +17,19 @@ export default {
 	callback: async function get_trades_by_user_ids(
 		request: FastifyRequest<{ Params: { user_ids: string } }>,
 	): Promise<[number, any]> {
+		// Validate params using Zod
+		const paramsParse = getTradesParamsSchema.safeParse(request.params);
+		if (!paramsParse.success) {
+			return [400, { error: "Invalid request", errors: paramsParse.error.flatten() }];
+		}
+
+		const { user_ids } = paramsParse.data;
 		const connection = await getMariaConnection();
 		if (!connection) {
 			return [500, { error: "Failed to connect to the database" }];
 		}
 
 		try {
-			const { user_ids } = request.params;
 			const user_ids_array = user_ids
 				.split(",")
 				.map((id) => parseInt(id.trim(), 10))

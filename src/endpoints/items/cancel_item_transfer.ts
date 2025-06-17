@@ -1,11 +1,20 @@
 import { FastifyRequest } from "fastify";
 import { getMariaConnection } from "../../service/mariadb";
 import query from "../../utilities/smartQuery";
+import { z } from "zod";
+
+const cancelParamsSchema = z.object({
+	transfer_id: z.string(),
+});
+
+const cancelBodySchema = z.object({
+	reason: z.string().optional(),
+});
 
 export default {
 	method: "POST",
 	url: "/items/item-transfer/:transfer_id/cancel",
-	authType: "none",
+	authType: "key",
 	callback: async function (
 		request: FastifyRequest<{
 			Params: {
@@ -22,12 +31,17 @@ export default {
 		}
 
 		try {
-			const { transfer_id } = request.params;
-			const { reason } = request.body || {};
-
-			if (!transfer_id || typeof transfer_id !== "string") {
-				return [400, { error: "Invalid request" }];
+			const paramsParse = cancelParamsSchema.safeParse(request.params);
+			const bodyParse = cancelBodySchema.safeParse(request.body || {});
+			if (!paramsParse.success || !bodyParse.success) {
+				return [400, { error: "Invalid request", errors: {
+					params: !paramsParse.success ? paramsParse.error.flatten() : undefined,
+					body: !bodyParse.success ? bodyParse.error.flatten() : undefined,
+				}}];
 			}
+
+			const { transfer_id } = paramsParse.data;
+			const { reason } = bodyParse.data;
 
 			await connection.beginTransaction();
 

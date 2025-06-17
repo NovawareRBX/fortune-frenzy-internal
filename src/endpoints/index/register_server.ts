@@ -2,6 +2,7 @@ import { FastifyRequest } from "fastify";
 import { getMariaConnection } from "../../service/mariadb";
 import { getRedisConnection } from "../../service/redis";
 import { createHash, randomBytes } from "crypto";
+import { z } from "zod";
 
 function maskIP(ip: string): string {
 	const parts = ip.split(".");
@@ -13,12 +14,20 @@ function maskIP(ip: string): string {
 	return `${parts[0]}.${parts[1]}.X.X`;
 }
 
+const registerParamsSchema = z.object({
+	server_id: z.string(),
+});
+
 export default {
 	method: "POST",
 	url: "/register/:server_id",
 	authType: "key",
 	callback: async function(request: FastifyRequest<{ Params: { server_id: string } }>): Promise<[number, any]> {
-		const server_id = request.params.server_id;
+		const paramsParse = registerParamsSchema.safeParse(request.params);
+		if (!paramsParse.success) {
+			return [400, { error: "Invalid request", errors: paramsParse.error.flatten() }];
+		}
+		const { server_id } = paramsParse.data;
 		const maria = await getMariaConnection();
 		const redis = await getRedisConnection();
 		const ip_address = request.headers["cf-connecting-ip"] as string;

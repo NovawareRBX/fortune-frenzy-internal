@@ -45,7 +45,6 @@ if (cluster.isPrimary) {
 
 			server.addHook("onRequest", async (request: FastifyRequest, reply: FastifyReply) => {
 				if (request.url === "/metrics") return;
-				// console.log(`Request received: ${request.url}`);
 				request.startTime = process.hrtime();
 			});
 

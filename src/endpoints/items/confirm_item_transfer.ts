@@ -1,11 +1,24 @@
 import { FastifyRequest } from "fastify";
 import { getMariaConnection } from "../../service/mariadb";
 import query from "../../utilities/smartQuery";
+import { z } from "zod";
+
+const confirmParamsSchema = z.object({
+	transfer_id: z.string(),
+});
+
+const confirmBodySchema = z.object({
+	user_id: z.string().regex(/^\d+$/),
+}).partial(); // body may be empty if swap=true
+
+const confirmQuerySchema = z.object({
+	swap: z.coerce.boolean().optional(),
+});
 
 export default {
 	method: "POST",
 	url: "/items/item-transfer/:transfer_id/confirm",
-	authType: "none",
+	authType: "key",
 	callback: async function (
 		request: FastifyRequest<{
 			Body?: {
@@ -25,19 +38,21 @@ export default {
 		}
 
 		try {
-			const { swap } = request.query || {};
-			const transfer_id = request.params.transfer_id;
-			const user_id = request.body?.user_id;
+			const paramsParse = confirmParamsSchema.safeParse(request.params);
+			const queryParse = confirmQuerySchema.safeParse(request.query);
+			const bodyParse = request.body ? confirmBodySchema.safeParse(request.body) : { success: true, data: {} } as any;
 
-			if (
-				(!request.body && !swap) ||
-				!transfer_id ||
-				(!swap && !user_id) ||
-				typeof transfer_id !== "string" ||
-				(!swap && typeof user_id !== "string")
-			) {
-				return [400, { error: "Invalid request" }];
+			if (!paramsParse.success || !queryParse.success || (!queryParse.data.swap && !bodyParse.success)) {
+				return [400, { error: "Invalid request", errors: {
+					params: !paramsParse.success ? paramsParse.error.flatten() : undefined,
+					query: !queryParse.success ? queryParse.error.flatten() : undefined,
+					body: !bodyParse.success ? (bodyParse.success ? undefined : bodyParse.error.flatten()) : undefined,
+				}}];
 			}
+
+			const { transfer_id } = paramsParse.data;
+			const { swap } = queryParse.data;
+			const user_id = bodyParse.success && bodyParse.data.user_id;
 
 			await connection.beginTransaction();
 

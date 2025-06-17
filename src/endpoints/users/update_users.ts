@@ -1,5 +1,31 @@
 import { FastifyRequest } from "fastify";
+import { z } from "zod";
 import { getMariaConnection } from "../../service/mariadb";
+
+// Zod schemas for validating the request body
+const recentActivitySchema = z.object({
+	text: z.string(),
+	icon: z.string(),
+});
+
+const userSchema = z.object({
+	user_id: z.string().regex(/^\d+$/),
+	name: z.string(),
+	display_name: z.string(),
+	total_cash_earned: z.number(),
+	total_cash_spent: z.number(),
+	current_cash: z.number(),
+	current_value: z.number(),
+	win_rate: z.number(),
+	biggest_win: z.number(),
+	total_plays: z.number(),
+	favourite_mode: z.string(),
+	time_played: z.number(),
+	xp: z.number(),
+	recent_activity: z.array(recentActivitySchema),
+});
+
+const updateUsersBodySchema = z.array(userSchema).nonempty();
 
 export default {
 	method: "POST",
@@ -28,32 +54,10 @@ export default {
 			}[];
 		}>,
 	): Promise<[number, any]> {
-		if (
-			!request.body ||
-			!Array.isArray(request.body) ||
-			request.body.length === 0 ||
-			!request.body.every(
-				(user) =>
-					typeof user.user_id === "string" &&
-					typeof user.name === "string" &&
-					typeof user.display_name === "string" &&
-					typeof user.total_cash_earned === "number" &&
-					typeof user.total_cash_spent === "number" &&
-					typeof user.current_cash === "number" &&
-					typeof user.current_value === "number" &&
-					typeof user.win_rate === "number" &&
-					typeof user.biggest_win === "number" &&
-					typeof user.total_plays === "number" &&
-					typeof user.favourite_mode === "string" &&
-					typeof user.time_played === "number" &&
-					typeof user.xp === "number" &&
-					Array.isArray(user.recent_activity) &&
-					user.recent_activity.every(
-						(activity) => typeof activity.text === "string" && typeof activity.icon === "string",
-					),
-			)
-		) {
-			return [400, { error: "Invalid request body" }];
+		// Validate body using Zod
+		const bodyParse = updateUsersBodySchema.safeParse(request.body);
+		if (!bodyParse.success) {
+			return [400, { error: "Invalid request body", errors: bodyParse.error.flatten() }];
 		}
 
 		const connection = await getMariaConnection();
@@ -62,7 +66,7 @@ export default {
 		}
 
 		try {
-			const users = request.body;
+			const users = bodyParse.data;
 			const placeholders = users.map(() => "(?, ?, ?, ?, ?, ?)").join(", ");
 			const values: any[] = [];
 			const recent_activity_values: any[] = [];

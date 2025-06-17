@@ -1,5 +1,16 @@
 import { FastifyRequest } from "fastify";
 import { getRedisConnection } from "../../service/redis";
+import { z } from "zod";
+
+const networkLogSchema = z.object({
+	server_id: z.string(),
+	logs: z.array(z.object({
+		network_name: z.string(),
+		speed: z.number(),
+		response: z.string(),
+		player: z.object({ name: z.string(), id: z.number() })
+	})).min(1),
+});
 
 export default {
 	method: "POST",
@@ -18,8 +29,12 @@ export default {
 			};
 		}>,
 	): Promise<[number, any]> {
+		const parseResult = networkLogSchema.safeParse(request.body);
+		if (!parseResult.success) {
+			return [400, { error: "Invalid request", errors: parseResult.error.flatten() }];
+		}
 		const redis = await getRedisConnection();
-		redis.publish("roblox_network_log", Buffer.from(JSON.stringify(request.body)));
+		redis.publish("roblox_network_log", Buffer.from(JSON.stringify(parseResult.data)));
 		return [200, { success: true }];
 	}
 };

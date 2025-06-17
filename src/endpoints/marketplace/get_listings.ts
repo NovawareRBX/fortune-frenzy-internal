@@ -3,6 +3,11 @@ import { getMariaConnection } from "../../service/mariadb";
 import { ItemListing } from "../../types/Endpoints";
 import smartQuery from "../../utilities/smartQuery";
 import getUserInfo from "../../utilities/getUserInfo";
+import { z } from "zod";
+
+const listingsParamsSchema = z.object({
+	id: z.string(),
+});
 
 export default {
 	method: "GET",
@@ -15,15 +20,21 @@ export default {
 		}
 
 		try {
+			const paramsParse = listingsParamsSchema.safeParse(request.params);
+			if (!paramsParse.success) {
+				return [400, { error: "Invalid request", errors: paramsParse.error.flatten() }];
+			}
+
+			const { id } = paramsParse.data;
 			const query =
-				request.params.id === "all"
+				id === "all"
 					? "SELECT * FROM item_listings WHERE expires_at > NOW() OR expires_at IS NULL;"
-					: "SELECT * FROM item_listings WHERE item_id = ? AND (expires_at > NOW() OR expires_at IS NULL);";
+				: "SELECT * FROM item_listings WHERE item_id = ? AND (expires_at > NOW() OR expires_at IS NULL);";
 
 			const listings = await smartQuery<ItemListing[]>(
 				connection,
 				query,
-				request.params.id === "all" ? [] : [request.params.id],
+				id === "all" ? [] : [id],
 			);
 
 			if (listings.length === 0) return [200, { status: "OK", listings: [] }];

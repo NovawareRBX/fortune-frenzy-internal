@@ -1,13 +1,22 @@
 import { FastifyRequest } from "fastify";
 import { getMariaConnection } from "../../service/mariadb";
 import { createHash, randomBytes } from "crypto";
+import { z } from "zod";
+
+const settingsParamsSchema = z.object({
+    game_id: z.string(),
+});
 
 export default {
     method: "GET",
     url: "/settings/:game_id",
     authType: "none",
     callback: async function(request: FastifyRequest<{ Params: { game_id: string } }>): Promise<[number, any]> {
-        const game_id = request.params.game_id;
+        const paramsParse = settingsParamsSchema.safeParse(request.params);
+        if (!paramsParse.success) {
+            return [400, { error: "Invalid request", errors: paramsParse.error.flatten() }];
+        }
+        const { game_id } = paramsParse.data;
         const maria = await getMariaConnection();
 
         try {

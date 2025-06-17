@@ -2,11 +2,19 @@ import { FastifyRequest } from "fastify";
 import { getMariaConnection } from "../../service/mariadb";
 import query from "../../utilities/smartQuery";
 import { randomBytes } from "crypto";
+import { z } from "zod";
+
+const transferItemSchema = z.object({
+	user_id: z.string().regex(/^\d+$/),
+	items: z.array(z.string().regex(/^FF/)).min(1),
+});
+
+const transferBodySchema = z.array(transferItemSchema).min(1);
 
 export default {
 	method: "POST",
 	url: "/items/item-transfer",
-	authType: "none",
+	authType: "key",
 	callback: async function (
 		request: FastifyRequest<{
 			Body: Array<{
@@ -21,24 +29,15 @@ export default {
 		}
 
 		try {
-			if (
-				!request.body ||
-				!Array.isArray(request.body) ||
-				request.body.length === 0 ||
-				!request.body.every(
-					(entry) =>
-						entry.user_id &&
-						Array.isArray(entry.items) &&
-						entry.items.length > 0 &&
-						typeof entry.user_id === "string" &&
-						entry.items.every((item) => typeof item === "string" && item.startsWith("FF")),
-				)
-			) {
-				return [400, { error: "Invalid request" }];
+			const parseResult = transferBodySchema.safeParse(request.body);
+			if (!parseResult.success) {
+				return [400, { error: "Invalid request", errors: parseResult.error.flatten() }];
 			}
 
+			const validBody = parseResult.data;
+
 			const transfer_id = randomBytes(10).toString("base64").replace(/[+/=]/g, "").substring(0, 10);
-			const items = request.body
+			const items = validBody
 				.map((entry) => entry.items.map((item) => [transfer_id, entry.user_id, item]))
 				.flat();
 			if (items.length === 0) {
