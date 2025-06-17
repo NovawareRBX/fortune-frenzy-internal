@@ -30,14 +30,10 @@ export default {
 		);
 		if (!userInfo) return [500, { message: "Failed to get user info" }];
 
-		const maxPlayers =
-			casebattle.team_mode === "2v2"
-				? 4
-				: casebattle.team_mode === "1v1v1v1"
-				? 4
-				: casebattle.team_mode === "1v1v1"
-				? 3
-				: 2;
+		const maxPlayers = casebattle.team_mode
+			.split("v")
+			.map(Number)
+			.reduce((sum, players) => sum + players, 0);
 		if (casebattle.players.length !== maxPlayers)
 			return [400, { message: "Case battle does not have enough players" }];
 

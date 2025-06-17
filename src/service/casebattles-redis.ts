@@ -15,7 +15,7 @@ export interface CaseBattleData {
 	server_seed: string;
 	team_mode: "1v1" | "1v1v1" | "1v1v1v1" | "2v2";
 	crazy: boolean;
-	mode: "standard" | "randomized" | "showdown" | "group";
+	mode: "Standard" | "Randomized" | "Showdown" | "Group";
 	fast_mode: boolean;
 	players: {
 		id: string;
@@ -40,6 +40,8 @@ export interface CaseBattleData {
 	};
 	current_spin_data: {
 		current_case_index: number;
+		case_id: string;
+		progress: string; // ie. "1/5"
 	};
 	winners_info?: {
 		player_id: string;
@@ -222,10 +224,7 @@ export class CasebattlesRedisManager {
 		const connection = await getMariaConnection();
 		if (!connection) return [];
 
-		const cases: CaseRow[] = caseId
-			? await smartQuery(connection, "SELECT * FROM casebattle_cases WHERE id = ?", [caseId])
-			: await smartQuery(connection, "SELECT * FROM casebattle_cases");
-
+		const cases: CaseRow[] = await smartQuery(connection, "SELECT * FROM casebattle_cases");
 		const items: ItemRow[] = await smartQuery(connection, "SELECT * FROM casebattle_items");
 		await connection.release();
 
@@ -292,27 +291,36 @@ export class CasebattlesRedisManager {
 			}
 
 			current.current_spin_data.current_case_index = index;
+			current.current_spin_data.case_id = caseId;
+			current.current_spin_data.progress = `${index + 1}/${current.cases.length}`;
 			await this.redis.set(gameKey, JSON.stringify({ ...current, updated_at: Date.now() }), {
 				XX: true,
 				EX: CASEBATTLE_EXPIRY,
 			});
 
-			if (index === current.cases.length - 1) {
-				await this.delay(300);
-			} else {
-				await this.delay((current.fast_mode ? 2.5 : 4) * 1000 + 300);
-			}
+			await this.delay((current.fast_mode ? 3 : 5) * 1000 + 300);
 		}
 
 		let winningPlayers: { player_id: string; amount_won: number }[] = [];
-		if (current.mode === "group") {
+		if (current.mode === "Group") {
 			winningPlayers = groupModeHandler(current);
-		} else if (current.mode === "randomized") {
+		} else if (current.mode === "Randomized") {
 			winningPlayers = randomizerModeHandler(current);
-		} else if (current.mode === "showdown") {
+		} else if (current.mode === "Showdown") {
 			winningPlayers = showdownModeHandler(current);
-		} else if (current.mode === "standard") {
+		} else if (current.mode === "Standard") {
 			winningPlayers = standardModeHandler(current);
+		}
+
+		// Update each player's total_value to reflect their final winnings (amount won or 0 if they lost)
+		const winningsMap: Record<string, number> = winningPlayers.reduce((acc, { player_id, amount_won }) => {
+			acc[player_id] = amount_won;
+			return acc;
+		}, {} as Record<string, number>);
+		for (const player of current.players) {
+			if (current.player_pulls[player.id]) {
+				current.player_pulls[player.id].total_value = winningsMap[player.id] ?? 0;
+			}
 		}
 
 		await this.redis.set(
@@ -323,10 +331,14 @@ export class CasebattlesRedisManager {
 				completed_at: Date.now(),
 				status: "completed",
 				updated_at: Date.now(),
+				current_spin_data: {
+					...current.current_spin_data,
+					current_case_index: current.cases.length + 1,
+				},
 			}),
 			{
 				XX: true,
-				EX: CASEBATTLE_EXPIRY,
+				EX: 10,
 			},
 		);
 

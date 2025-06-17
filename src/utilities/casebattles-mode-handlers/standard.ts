@@ -7,21 +7,12 @@ export default function standardModeHandler(current: CaseBattleData) {
 	let i = 0;
 	const teams = teamSizes.map((size) => sortedPlayers.slice(i, (i += size)));
 	const totalValue = current.players.reduce((acc, player) => acc + current.player_pulls[player.id].total_value, 0);
-
-	const winningTeam = teams.reduce((maxTeam, currentTeam) => {
-		const currentTeamValue = currentTeam.reduce(
-			(acc, player) => acc + current.player_pulls[player.id].total_value,
-			0,
-		);
-		const maxTeamValue = maxTeam.reduce((acc, player) => acc + current.player_pulls[player.id].total_value, 0);
-		return current.crazy
-			? currentTeamValue < maxTeamValue
-				? currentTeam
-				: maxTeam
-			: currentTeamValue > maxTeamValue
-			? currentTeam
-			: maxTeam;
-	}, teams[0]);
+	const teamValues = teams.map((team) =>
+		team.reduce((acc, player) => acc + current.player_pulls[player.id].total_value, 0),
+	);
+	const bestValue = current.crazy ? Math.min(...teamValues) : Math.max(...teamValues);
+	const candidateTeams = teams.filter((_, idx) => teamValues[idx] === bestValue);
+	const winningTeam = candidateTeams[Math.floor(Math.random() * candidateTeams.length)];
 
 	return winningTeam.map((player) => ({
 		player_id: player.id,

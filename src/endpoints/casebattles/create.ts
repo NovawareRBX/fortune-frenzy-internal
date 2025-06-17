@@ -38,7 +38,7 @@ export default {
 				user_id: number;
 				client_seed: string;
 				cases: Array<string>;
-				mode: "standard" | "randomized" | "showdown" | "group";
+				mode: "Standard" | "Randomized" | "Showdown" | "Group";
 				team_mode: "1v1" | "1v1v1" | "1v1v1v1" | "2v2";
 				fast_mode: boolean;
 				crazy: boolean;
@@ -47,19 +47,26 @@ export default {
 		}>,
 	): Promise<[number, any]> {
 		const body = request.body;
-		if (
-			!(
-				typeof body === "object" &&
-				typeof body.user_id === "number" &&
-				Array.isArray(body.cases) &&
-				body.cases.every((item: any) => typeof item === "string") &&
-				["standard", "randomized", "showdown", "group"].includes(body.mode) &&
-				["1v1", "1v1v1", "1v1v1v1", "2v2"].includes(body.team_mode) &&
-				typeof body.fast_mode === "boolean" &&
-				typeof body.crazy === "boolean" &&
-				typeof body.server_id === "string"
-			)
-		) {
+		// Validate request body and collect any invalid fields for detailed logging
+		const invalidFields: string[] = [];
+		if (typeof body !== "object") {
+			invalidFields.push("body_type");
+		} else {
+			if (typeof body.user_id !== "number") invalidFields.push("user_id");
+			if (!Array.isArray(body.cases)) {
+				invalidFields.push("cases");
+			} else if (!body.cases.every((item: any) => typeof item === "string")) {
+				invalidFields.push("cases_items");
+			}
+			if (!["Standard", "Randomized", "Showdown", "Group"].includes(body.mode)) invalidFields.push("mode");
+			if (!["1v1", "1v1v1", "1v1v1v1", "2v2"].includes(body.team_mode)) invalidFields.push("team_mode");
+			if (typeof body.fast_mode !== "boolean") invalidFields.push("fast_mode");
+			if (typeof body.crazy !== "boolean") invalidFields.push("crazy");
+			if (typeof body.server_id !== "string") invalidFields.push("server_id");
+		}
+
+		if (invalidFields.length > 0) {
+			request.log.warn({ invalidFields, body }, `400 - Invalid request: invalid field(s) -> ${invalidFields.join(", ")}`);
 			return [400, { message: "Invalid request" }];
 		}
 
@@ -74,10 +81,12 @@ export default {
 		const userInfo = await getUserInfo(connection, [body.user_id.toString()]);
 
 		if (!userInfo || userInfo.length === 0) {
+			console.log({ user_id: body.user_id }, "400 - Invalid user ID supplied for /casebattles/create");
 			return [400, { message: "Invalid user ID" }];
 		}
 
 		if (cases.length === 0 || cases.length !== body.cases.length) {
+			console.log({ requested_case_ids: body.cases, resolved_case_ids: cases.map(c => c.id) }, "400 - Invalid case IDs supplied for /casebattles/create");
 			return [400, { message: "Invalid case IDs" }];
 		}
 
@@ -108,6 +117,8 @@ export default {
 			},
 			current_spin_data: {
 				current_case_index: -1,
+				case_id: body.cases[0],
+				progress: `0/${body.cases.length}`,
 			},
 			status: "waiting_for_players",
 			created_at: Date.now(),
