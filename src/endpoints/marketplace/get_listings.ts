@@ -1,7 +1,6 @@
 import { FastifyRequest } from "fastify";
-import { getMariaConnection } from "../../service/mariadb";
+import { getPostgresConnection } from "../../service/postgres";
 import { ItemListing } from "../../types/Endpoints";
-import smartQuery from "../../utilities/smartQuery";
 import getUserInfo from "../../utilities/getUserInfo";
 import { z } from "zod";
 
@@ -14,7 +13,7 @@ export default {
 	url: "/marketplace/items/:id/listings",
 	authType: "none",
 	callback: async function (request: FastifyRequest<{ Params: { id: string } }>): Promise<[number, any]> {
-		const connection = await getMariaConnection();
+		const connection = await getPostgresConnection();
 		if (!connection) {
 			return [500, { error: "Failed to connect to the database" }];
 		}
@@ -26,16 +25,12 @@ export default {
 			}
 
 			const { id } = paramsParse.data;
-			const query =
+			const sql =
 				id === "all"
 					? "SELECT * FROM item_listings WHERE expires_at > NOW() OR expires_at IS NULL;"
-				: "SELECT * FROM item_listings WHERE item_id = ? AND (expires_at > NOW() OR expires_at IS NULL);";
+					: "SELECT * FROM item_listings WHERE item_id = $1 AND (expires_at > NOW() OR expires_at IS NULL);";
 
-			const listings = await smartQuery<ItemListing[]>(
-				connection,
-				query,
-				id === "all" ? [] : [id],
-			);
+			const { rows: listings } = await connection.query<ItemListing>(sql, id === "all" ? [] : [id]);
 
 			if (listings.length === 0) return [200, { status: "OK", listings: [] }];
 

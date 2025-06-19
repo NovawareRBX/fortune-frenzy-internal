@@ -26,6 +26,5 @@ export async function getRedisConnection(): Promise<RedisClientType> {
 	if (!client) {
 		await initialize();
 	}
-
 	return client;
 }

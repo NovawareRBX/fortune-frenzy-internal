@@ -1,8 +1,7 @@
 import { FastifyRequest } from "fastify";
 import { z } from "zod";
-import { getMariaConnection } from "../../service/mariadb";
+import { getPostgresConnection } from "../../service/postgres";
 import { Trade, TradeItem } from "../../types/Endpoints";
-import smartQuery from "../../utilities/smartQuery";
 import getUserInfo from "../../utilities/getUserInfo";
 import getItemString from "../../utilities/getItemString";
 
@@ -24,7 +23,7 @@ export default {
 		}
 
 		const { user_ids } = paramsParse.data;
-		const connection = await getMariaConnection();
+		const connection = await getPostgresConnection();
 		if (!connection) {
 			return [500, { error: "Failed to connect to the database" }];
 		}
@@ -39,12 +38,11 @@ export default {
 				return [400, { error: "No valid user IDs provided" }];
 			}
 
-			const trades = await smartQuery<Trade[]>(
-				connection,
+			const { rows: trades } = await connection.query<Trade>(
 				`SELECT * FROM trades
-	   WHERE (initiator_user_id IN (?) OR receiver_user_id IN (?))
-		 AND updated_at >= NOW() - INTERVAL 2 WEEK;`,
-				[user_ids_array, user_ids_array],
+				 WHERE (initiator_user_id = ANY($1::bigint[]) OR receiver_user_id = ANY($1::bigint[]))
+				   AND updated_at >= NOW() - INTERVAL '2 week'`,
+				[user_ids_array],
 			);
 
 			if (trades.length === 0) {
@@ -52,9 +50,8 @@ export default {
 			}
 
 			const tradeIds = trades.map((t) => t.trade_id);
-			const tradeItems = await smartQuery<TradeItem[]>(
-				connection,
-				`SELECT * FROM trade_items WHERE trade_id IN (?)`,
+			const { rows: tradeItems } = await connection.query<TradeItem>(
+				`SELECT * FROM trade_items WHERE trade_id = ANY($1::bigint[])`,
 				[tradeIds],
 			);
 

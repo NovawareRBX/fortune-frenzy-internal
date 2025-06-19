@@ -1,8 +1,6 @@
 import { FastifyRequest } from "fastify";
 import { CasebattlesRedisManager } from "../../service/casebattles-redis";
-import { getMariaConnection } from "../../service/mariadb";
 import { getRedisConnection } from "../../service/redis";
-import smartQuery from "../../utilities/smartQuery";
 
 export interface CaseRow {
 	id: string;

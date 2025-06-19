@@ -1,6 +1,5 @@
-import { FastifyReply, FastifyRequest } from "fastify";
-import { getMariaConnection } from "../../service/mariadb";
-import smartQuery from "../../utilities/smartQuery";
+import { FastifyRequest } from "fastify";
+import { getPostgresConnection } from "../../service/postgres";
 import { getRedisConnection } from "../../service/redis";
 
 export default {
@@ -8,7 +7,7 @@ export default {
 	url: "/users/total",
 	authType: "none",
 	callback: async function (request: FastifyRequest): Promise<[number, any]> {
-		const connection = await getMariaConnection();
+		const connection = await getPostgresConnection();
 		const redis = await getRedisConnection();
 
 		if (!connection || !redis) {
@@ -21,8 +20,8 @@ export default {
 				return [200, { count: cachedCount }];
 			}
 
-			const [rows] = await smartQuery(connection, "SELECT COUNT(*) as count FROM users");
-			const count = rows.count;
+			const { rows } = await connection.query("SELECT COUNT(*) as count FROM users");
+			const count = parseInt(rows[0].count, 10);
 			await redis.set("total_user_count", count, { EX: 300 });
 
 			return [200, { count }];

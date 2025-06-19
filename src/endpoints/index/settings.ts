@@ -1,6 +1,5 @@
 import { FastifyRequest } from "fastify";
-import { getMariaConnection } from "../../service/mariadb";
-import { createHash, randomBytes } from "crypto";
+import { getPostgresConnection } from "../../service/postgres";
 import { z } from "zod";
 
 const settingsParamsSchema = z.object({
@@ -17,10 +16,10 @@ export default {
             return [400, { error: "Invalid request", errors: paramsParse.error.flatten() }];
         }
         const { game_id } = paramsParse.data;
-        const maria = await getMariaConnection();
+        const pgClient = await getPostgresConnection();
 
         try {
-            const [settings] = await maria.query("SELECT * FROM settings WHERE id = ?", [game_id]);
+            const { rows: settings } = await pgClient.query("SELECT * FROM settings WHERE id = $1", [game_id]);
 
             if (settings.length === 0) {
                 return [404, { error: "Settings not found" }];
@@ -31,7 +30,7 @@ export default {
                 result: settings,
             }];
         } finally {
-            await maria.release();
+            await pgClient.release();
         }
     }
 };

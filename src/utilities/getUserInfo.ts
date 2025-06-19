@@ -1,9 +1,8 @@
-import { PoolConnection } from "mariadb";
+import { PoolClient } from "pg";
 import { getRedisConnection } from "../service/redis";
-import query from "./smartQuery";
 
 export default async function getUserInfo(
-	connection: PoolConnection,
+	connection: PoolClient,
 	userIds: string[],
 ): Promise<Array<{ id: string; username: string; display_name: string }>> {
 	const redis = await getRedisConnection();
@@ -21,9 +20,12 @@ export default async function getUserInfo(
 	});
 
 	if (uncached_user_ids.length > 0) {
-		const users = await query<Array<{ user_id: string; name: string; display_name: string }>>(
-			connection,
-			"SELECT user_id, name, display_name FROM users WHERE user_id IN (?)",
+		const { rows: users } = await connection.query<{
+			user_id: string;
+			name: string;
+			display_name: string;
+		}>(
+			"SELECT user_id, name, display_name FROM users WHERE user_id = ANY($1::bigint[])",
 			[uncached_user_ids],
 		);
 

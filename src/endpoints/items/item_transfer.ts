@@ -1,6 +1,5 @@
 import { FastifyRequest } from "fastify";
-import { getMariaConnection } from "../../service/mariadb";
-import query from "../../utilities/smartQuery";
+import { getPostgresConnection } from "../../service/postgres";
 import { randomBytes } from "crypto";
 import { z } from "zod";
 
@@ -23,7 +22,7 @@ export default {
 			}>;
 		}>,
 	): Promise<[number, any]> {
-		const connection = await getMariaConnection();
+		const connection = await getPostgresConnection();
 		if (!connection) {
 			return [500, { error: "Failed to connect to the database" }];
 		}
@@ -44,24 +43,19 @@ export default {
 				return [400, { error: "Invalid request" }];
 			}
 
-			const data = await query(
-				connection,
-				`SELECT user_asset_id, owner_id FROM item_copies WHERE (user_asset_id, owner_id) IN (${items
-					.map(() => "(?, ?)")
-					.join(", ")})`,
-				items.flatMap((item) => [item[2], item[1]]),
-			);
+			const pairPlaceholders = items.map((_, idx) => `($${idx * 2 + 1}, $${idx * 2 + 2})`).join(", ");
+			const dataQuery = `SELECT user_asset_id, owner_id FROM item_copies WHERE (user_asset_id, owner_id) IN (${pairPlaceholders})`;
+			const { rows: data } = await connection.query<{ user_asset_id: string; owner_id: string }>(dataQuery, items.flatMap((item) => [item[2], item[1]]));
 
 			if (data.length !== items.length) {
 				return [400, { error: "Invalid request" }];
 			}
 
-			await query(connection, "INSERT INTO item_transfers (transfer_id) VALUES (?)", [transfer_id]);
-			const placeholders = items.map(() => "(?, ?, ?)").join(", ");
+			await connection.query("INSERT INTO item_transfers (transfer_id) VALUES ($1)", [transfer_id]);
+			const placeholders = items.map((_, idx) => `($${idx * 3 + 1}, $${idx * 3 + 2}, $${idx * 3 + 3})`).join(", ");
 			const values = items.flat();
 
-			await query(
-				connection,
+			await connection.query(
 				`INSERT INTO item_transfer_items (transfer_id, user_id, item_uaid) VALUES ${placeholders}`,
 				values,
 			);

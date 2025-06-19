@@ -1,5 +1,4 @@
 import { FastifyRequest } from "fastify";
-import { getMariaConnection } from "../../service/mariadb";
 import { getRedisConnection } from "../../service/redis";
 import { z } from "zod";
 import { JackpotRedisManager } from "../../service/jackpot-redis";

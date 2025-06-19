@@ -3,7 +3,7 @@ import { getRedisConnection } from "../../service/redis";
 import { CasebattlesRedisManager } from "../../service/casebattles-redis";
 import { randomBytes } from "crypto";
 import getUserInfo from "../../utilities/getUserInfo";
-import { getMariaConnection } from "../../service/mariadb";
+import { getPostgresConnection } from "../../service/postgres";
 import { z } from "zod";
 
 const BOT_INFO = [
@@ -99,6 +99,7 @@ const BOT_INFO = [
 	["chewbeccca", 341206540],
 	["bakmamba74", 305088257],
 	["Cherpl", 351675979],
+	["Dylan", 1253223851]
 ];
 
 const joinBodySchema = z.object({
@@ -138,9 +139,8 @@ export default {
 		const { id: casebattleId } = paramsParse.data;
 
 		const redis = await getRedisConnection();
-		if (!redis) return [500, { message: "Failed to connect to Redis" }];
-		const connection = await getMariaConnection();
-		if (!connection) return [500, { message: "Failed to connect to MariaDB" }];
+		const connection = await getPostgresConnection();
+		if (!connection) return [500, { message: "Failed to connect to database" }];
 
 		const casebattlesRedisManager = new CasebattlesRedisManager(redis, request.server);
 		const casebattle = await casebattlesRedisManager.getCaseBattle(casebattleId);

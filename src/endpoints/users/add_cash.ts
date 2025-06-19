@@ -1,6 +1,6 @@
 import { FastifyRequest } from "fastify";
 import { z } from "zod";
-import { getMariaConnection } from "../../service/mariadb";
+import { getPostgresConnection } from "../../service/postgres";
 
 // Zod schemas for validating request params and headers
 const addCashParamsSchema = z.object({
@@ -35,14 +35,16 @@ export default {
 		const { id } = paramsParse.data;
 		const amount = parseInt(headersParse.data.amount, 10);
 
-		const connection = await getMariaConnection();
+		const connection = await getPostgresConnection();
 		if (!connection) {
 			return [500, { error: "Failed to connect to the database" }];
 		}
 
 		try {
-			const query = `INSERT INTO external_cash_change_requests (user_id, amount, status) VALUES (?, ?, 'pending');`;
-			await connection.query(query, [id, amount]);
+			await connection.query(
+				`INSERT INTO external_cash_change_requests (user_id, amount, status) VALUES ($1, $2, 'pending')`,
+				[id, amount],
+			);
 			return [200, { status: "OK" }];
 		} catch (error) {
 			console.error("Error fetching user inventory:", error);

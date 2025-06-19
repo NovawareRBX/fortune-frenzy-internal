@@ -1,6 +1,6 @@
-import { FastifyReply, FastifyRequest } from "fastify";
-import { getMariaConnection } from "../../service/mariadb";
-import smartQuery from "../../utilities/smartQuery";
+import { FastifyRequest } from "fastify";
+import { getPostgresConnection } from "../../service/postgres";
+import { getRedisConnection } from "../../service/redis";
 import { z } from "zod";
 
 const itemParamsSchema = z.object({
@@ -12,7 +12,7 @@ export default {
 	url: "/marketplace/items/:id",
 	authType: "none",
 	callback: async function (request: FastifyRequest<{ Params: { id: string } }>): Promise<[number, any]> {
-		const connection = await getMariaConnection();
+		const connection = await getPostgresConnection();
 		if (!connection) {
 			return [500, { error: "Failed to connect to the database" }];
 		}
@@ -24,10 +24,22 @@ export default {
 			}
 			const { id: item_id } = paramsParse.data;
 
-			const [result] = await smartQuery(connection, "SELECT * FROM items WHERE id = ?", [item_id]);
+			const redis = await getRedisConnection();
+			const cacheKey = `item:${item_id}`;
+			const cached = await redis.get(cacheKey);
+			if (cached) {
+				return [200, { status: "OK", data: JSON.parse(cached) }];
+			}
+
+			const { rows } = await connection.query("SELECT * FROM items WHERE id = $1", [item_id]);
+			const result = rows[0];
 
 			if (!result) {
 				return [404, { error: "Item not found" }];
+			}
+
+			if (result) {
+				await redis.set(cacheKey, JSON.stringify(result), { EX: 300 }); // cache 5 minutes
 			}
 
 			return [

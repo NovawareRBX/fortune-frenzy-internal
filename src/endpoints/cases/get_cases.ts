@@ -1,20 +1,18 @@
-import { Connection, PoolConnection } from "mariadb";
-import { getMariaConnection } from "../../service/mariadb";
+import { getPostgresConnection } from "../../service/postgres";
 import { ItemCase } from "../../types/Endpoints";
-import smartQuery from "../../utilities/smartQuery";
 
 export default {
 	method: "GET",
 	url: "/cases",
 	authType: "none",
 	callback: async function(): Promise<[number, any]> {
-		const connection = await getMariaConnection();
+		const connection = await getPostgresConnection();
 		if (!connection) {
 			return [500, { error: "Failed to connect to the database" }];
 		}
 
 		try {
-			const rows = await smartQuery<ItemCase>(connection, "SELECT * FROM cases");
+			const { rows } = await connection.query("SELECT * FROM cases");
 
 			return [
 				200,

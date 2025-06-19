@@ -1,6 +1,5 @@
-import { FastifyReply, FastifyRequest } from "fastify";
-import { getMariaConnection } from "../../service/mariadb";
-import smartQuery from "../../utilities/smartQuery";
+import { FastifyRequest } from "fastify";
+import { getPostgresConnection } from "../../service/postgres";
 import countries from "../../utilities/countries.json";
 import { z } from "zod";
 
@@ -24,7 +23,7 @@ export default {
 			Body: { name?: string; display_name?: string; country?: string };
 		}>,
 	): Promise<[number, any]> {
-		const connection = await getMariaConnection();
+		const connection = await getPostgresConnection();
 		if (!connection) {
 			return [500, { error: "Failed to connect to the database" }];
 		}
@@ -51,18 +50,17 @@ export default {
 			}
 
 			await connection.query(
-				`
-                INSERT INTO users (user_id, name, display_name, country) 
-                VALUES (?, ?, ?, ?)
-                ON DUPLICATE KEY UPDATE 
-                  name = VALUES(name), 
-                  display_name = VALUES(display_name),
-                  country = VALUES(country)
-                `,
+				`INSERT INTO users (user_id, name, display_name, country)
+				 VALUES ($1, $2, $3, $4)
+				 ON CONFLICT (user_id) DO UPDATE SET
+					 name = EXCLUDED.name,
+					 display_name = EXCLUDED.display_name,
+					 country = EXCLUDED.country`,
 				[user_id, name, display_name, country],
 			);
 
-			const [result] = await smartQuery(connection, "SELECT * FROM users WHERE user_id = ?", [user_id]);
+			const { rows } = await connection.query("SELECT * FROM users WHERE user_id = $1", [user_id]);
+			const result = rows[0];
 
 			return [
 				200,

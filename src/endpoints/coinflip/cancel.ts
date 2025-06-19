@@ -1,6 +1,6 @@
 import { FastifyRequest } from "fastify";
 import { getRedisConnection } from "../../service/redis";
-import { getMariaConnection } from "../../service/mariadb";
+import { getPostgresConnection } from "../../service/postgres";
 import { CoinflipRedisManager } from "../../service/coinflip-redis";
 import { z } from "zod";
 
@@ -24,7 +24,7 @@ export default {
 		const { coinflip_id } = paramsParse.data;
 
 		const redis = await getRedisConnection();
-		const connection = await getMariaConnection();
+		const connection = await getPostgresConnection();
 
 		if (!connection || !redis) {
 			return [500, { error: "Failed to connect to the database" }];

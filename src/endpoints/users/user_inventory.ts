@@ -1,7 +1,6 @@
-import { FastifyReply, FastifyRequest } from "fastify";
+import { FastifyRequest } from "fastify";
 import { z } from "zod";
-import { getMariaConnection } from "../../service/mariadb";
-import smartQuery from "../../utilities/smartQuery";
+import { getPostgresConnection } from "../../service/postgres";
 
 const userInventoryParamsSchema = z.object({
 	id: z.string().regex(/^\d+$/),
@@ -12,7 +11,7 @@ export default {
 	url: "/users/:id/inventory",
 	authType: "none",
 	callback: async function (request: FastifyRequest<{ Params: { id: string } }>): Promise<[number, any]> {
-		const connection = await getMariaConnection();
+		const connection = await getPostgresConnection();
 		if (!connection) {
 			return [500, { error: "Failed to connect to the database" }];
 		}
@@ -25,11 +24,10 @@ export default {
 			}
 			const user_id = paramsParse.data.id;
 
-			await connection.query("INSERT IGNORE INTO users (user_id) VALUES (?)", [user_id]);
+			await connection.query("INSERT INTO users (user_id) VALUES ($1) ON CONFLICT DO NOTHING", [user_id]);
 
-			const rows = await smartQuery(
-				connection,
-				"SELECT copy_id, item_id, user_asset_id, serial_number FROM item_copies WHERE owner_id = ?",
+			const { rows } = await connection.query(
+				"SELECT copy_id, item_id, user_asset_id, serial_number FROM item_copies WHERE owner_id = $1",
 				[user_id],
 			);
 

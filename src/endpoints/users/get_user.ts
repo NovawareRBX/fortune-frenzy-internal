@@ -1,6 +1,5 @@
 import { FastifyRequest } from "fastify";
-import { getMariaConnection } from "../../service/mariadb";
-import smartQuery from "../../utilities/smartQuery";
+import { getPostgresConnection } from "../../service/postgres";
 import { z } from "zod";
 
 const userParamSchema = z.object({ id: z.string().regex(/^\d+$/) });
@@ -15,16 +14,19 @@ export default {
 			return [400, { error: "Invalid request", errors: paramsParse.error.flatten() }];
 		}
 		const user_id = parseInt(paramsParse.data.id);
-		const connection = await getMariaConnection();
+		const connection = await getPostgresConnection();
 		if (!connection) return [500, { error: "Failed to connect to the database" }];
 
 		try {
-			const [data] = await smartQuery(connection, `SELECT * FROM users WHERE user_id = ?`, [user_id]);
-			const recent_activity = await smartQuery(
-				connection,
-				`SELECT image, text FROM recent_game_activity WHERE user_id = ? ORDER BY created_at DESC LIMIT 10`,
+			const {
+				rows: [data],
+			} = await connection.query(`SELECT * FROM users WHERE user_id = $1`, [user_id]);
+
+			const { rows: recent_activity } = await connection.query(
+				`SELECT image, text FROM recent_game_activity WHERE user_id = $1 ORDER BY created_at DESC LIMIT 10`,
 				[user_id],
 			);
+
 			if (!data) return [404, { error: "User not found" }];
 
 			return [

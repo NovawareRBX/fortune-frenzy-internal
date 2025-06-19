@@ -1,6 +1,5 @@
-import { getMariaConnection } from "../../service/mariadb";
+import { getPostgresConnection } from "../../service/postgres";
 import { ItemCase } from "../../types/Endpoints";
-import smartQuery from "../../utilities/smartQuery";
 
 const ITEMS_PER_CASE = 10;
 
@@ -74,12 +73,12 @@ async function selectCaseItemsWithFillers(
 	let i = currentIndex - 1;
 	while (items.length < ITEMS_PER_CASE && i >= 0) {
 		const lowerCase = sortedCases[i];
-		let fillerCandidates: { id: string; value: number }[] = await smartQuery(
-			connection,
-			"SELECT id, value FROM items WHERE value >= ? AND value <= ?",
+		const { rows: fillerCandidatesRows } = await connection.query(
+			"SELECT id, value FROM items WHERE value >= $1 AND value <= $2",
 			[lowerCase.min_value, lowerCase.max_value],
 		);
-		fillerCandidates = fillerCandidates.filter((item) => !usedItemIds.has(item.id));
+		let fillerCandidates = fillerCandidatesRows as { id: string; value: number }[];
+		fillerCandidates = fillerCandidates.filter((item: { id: string; value: number }) => !usedItemIds.has(item.id));
 		fisherYatesShuffle(fillerCandidates);
 
 		const slotsLeft = ITEMS_PER_CASE - items.length;
@@ -102,33 +101,34 @@ export default {
 	url: "/cases/regenerate",
 	authType: "key",
 	callback: async function(): Promise<[number, any]> {
-		const connection = await getMariaConnection();
+		const connection = await getPostgresConnection();
 		if (!connection) {
 			console.error("database connection failed");
 			return [500, { error: "failed to establish database connection" }];
 		}
 
 		try {
-			const cases = await smartQuery<ItemCase[]>(connection, "SELECT * FROM cases");
+			const { rows: casesRows } = await connection.query("SELECT * FROM cases");
+			const cases = casesRows as ItemCase[];
 			cases.sort((a, b) => a.min_value - b.min_value);
 
 			const usedItemIds = new Set<string>();
 
 			for (let i = 0; i < cases.length; i++) {
 				const caseData = cases[i];
-				const validItems = await smartQuery<{ id: string; value: number }[]>(
-					connection,
-					"SELECT id, value FROM items WHERE value >= ? AND value <= ?",
+				const { rows: validItemsRows } = await connection.query(
+					"SELECT id, value FROM items WHERE value >= $1 AND value <= $2",
 					[caseData.min_value, caseData.max_value],
 				);
+				const validItems = validItemsRows as { id: string; value: number }[];
 
 				const items = await selectCaseItemsWithFillers(connection, caseData, validItems, usedItemIds, cases);
 				const caseItemsWithChances = calculateItemChances(items);
-				const chances = caseItemsWithChances.map((item) => item.chance);
+				const chances = caseItemsWithChances.map((item: {id:string; chance:number; claimed:number}) => item.chance);
 				const calculatedPrice = calculateCasePrice(items, chances);
 
 				await connection.query(
-					"UPDATE cases SET items = ?, price = ?, next_rotation = ?, opened_count = 0 WHERE id = ?",
+					"UPDATE cases SET items = $1, price = $2, next_rotation = $3, opened_count = 0 WHERE id = $4",
 					[
 						JSON.stringify(caseItemsWithChances),
 						calculatedPrice,

@@ -1,10 +1,7 @@
 import { FastifyRequest } from "fastify";
 import { z } from "zod";
-import { getMariaConnection } from "../../service/mariadb";
-import { Trade, TradeItem } from "../../types/Endpoints";
-import smartQuery from "../../utilities/smartQuery";
-import getUserInfo from "../../utilities/getUserInfo";
-import getItemString from "../../utilities/getItemString";
+import { getPostgresConnection } from "../../service/postgres";
+import { Trade } from "../../types/Endpoints";
 import doSelfHttpRequest from "../../utilities/internalRequest";
 
 const tradeAcceptParamsSchema = z.object({
@@ -26,15 +23,17 @@ export default {
 
 		const { trade_id } = paramsParse.data;
 
-		const connection = await getMariaConnection();
+		const connection = await getPostgresConnection();
 		if (!connection) {
 			return [500, { error: "Failed to connect to the database" }];
 		}
 
 		try {
-			const [trade_data] = (await smartQuery(connection, `SELECT * FROM trades WHERE trade_id = ?`, [
-				trade_id,
-			])) as Trade[];
+			const { rows: trades } = await connection.query<Trade>(
+				`SELECT * FROM trades WHERE trade_id = $1`,
+				[trade_id],
+			);
+			const trade_data = trades[0];
 
 			if (!trade_data) return [404, { error: "Trade not found" }];
 			if (trade_data.status !== "pending") return [400, { error: "Trade is not active" }];
@@ -45,18 +44,14 @@ export default {
 			});
 
 			if (response.statusCode !== 200) {
-				await smartQuery(connection, `UPDATE trades SET status = 'failed' WHERE trade_id = ?`, [
-					trade_id,
-				]);
+				await connection.query(`UPDATE trades SET status = 'failed', updated_at = NOW() WHERE trade_id = $1`, [trade_id]);
 
 				if (response.statusCode === 403) return [400, { error: "One or more items owner changed" }];
 
 				return [500, { error: "Item transfer failed" }];
 			}
 
-			await smartQuery(connection, `UPDATE trades SET status = 'accepted' WHERE trade_id = ?`, [
-				trade_id,
-			]);
+			await connection.query(`UPDATE trades SET status = 'accepted', updated_at = NOW() WHERE trade_id = $1`, [trade_id]);
 
 			return [
 				200,

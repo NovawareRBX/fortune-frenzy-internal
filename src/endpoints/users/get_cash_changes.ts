@@ -1,7 +1,6 @@
 import { FastifyRequest } from "fastify";
 import { z } from "zod";
-import { getMariaConnection } from "../../service/mariadb";
-import smartQuery from "../../utilities/smartQuery";
+import { getPostgresConnection } from "../../service/postgres";
 
 interface CashChangeRequest {
 	user_id: bigint;
@@ -18,7 +17,7 @@ export default {
 	url: "/users/get-cash-changes",
 	authType: "key",
 	callback: async function handleRequest(request: FastifyRequest): Promise<[number, any]> {
-		const connection = await getMariaConnection();
+		const connection = await getPostgresConnection();
 		if (!connection) {
 			return [500, { error: "Failed to connect to the database" }];
 		}
@@ -37,15 +36,14 @@ export default {
 				return [400, { error: "No user-ids found in header" }];
 			}
 
-			await connection.beginTransaction();
-			const rows = await smartQuery<CashChangeRequest[]>(
-				connection,
-				`SELECT user_id, amount FROM external_cash_change_requests WHERE status = 'pending' AND user_id IN (?) FOR UPDATE`,
-				[userIds.map((id) => Number(id))],
+			await connection.query('BEGIN');
+			const { rows } = await connection.query<CashChangeRequest>(
+				`SELECT user_id, amount FROM external_cash_change_requests WHERE status = 'pending' AND user_id = ANY($1::bigint[]) FOR UPDATE`,
+				[userIds.map((id) => BigInt(id))],
 			);
 
 			if (rows.length === 0) {
-				await connection.rollback();
+				await connection.query('ROLLBACK');
 				return [200, { status: "OK", changes: [] }];
 			}
 
@@ -55,15 +53,15 @@ export default {
 			}));
 
 			await connection.query(
-				`UPDATE external_cash_change_requests SET status = 'processed', processed_at = CURRENT_TIMESTAMP WHERE user_id IN (?) AND status = 'pending'`,
-				[rows.map((row) => row.user_id.toString())],
+				`UPDATE external_cash_change_requests SET status = 'processed', processed_at = CURRENT_TIMESTAMP WHERE user_id = ANY($1::bigint[]) AND status = 'pending'`,
+				[rows.map((row) => row.user_id)],
 			);
 
-			await connection.commit();
+			await connection.query('COMMIT');
 
 			return [200, { status: "OK", changes }];
 		} catch (error) {
-			await connection.rollback();
+			await connection.query('ROLLBACK');
 			return [500, { error: "Internal Server Error" }];
 		} finally {
 			await connection.release();

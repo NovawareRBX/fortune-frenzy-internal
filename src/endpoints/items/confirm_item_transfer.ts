@@ -1,6 +1,5 @@
 import { FastifyRequest } from "fastify";
-import { getMariaConnection } from "../../service/mariadb";
-import query from "../../utilities/smartQuery";
+import { getPostgresConnection } from "../../service/postgres";
 import { z } from "zod";
 
 const confirmParamsSchema = z.object({
@@ -32,7 +31,7 @@ export default {
 			};
 		}>,
 	): Promise<[number, any]> {
-		const connection = await getMariaConnection();
+		const connection = await getPostgresConnection();
 		if (!connection) {
 			return [500, { error: "Failed to connect to the database" }];
 		}
@@ -54,65 +53,53 @@ export default {
 			const { swap } = queryParse.data;
 			const user_id = bodyParse.success && bodyParse.data.user_id;
 
-			await connection.beginTransaction();
+			await connection.query("BEGIN");
 
-			const [transfer] = await query(connection, "SELECT * FROM item_transfers WHERE transfer_id = ?", [transfer_id]);
+			const { rows: transferRows } = await connection.query("SELECT * FROM item_transfers WHERE transfer_id = $1", [transfer_id]);
+			const transfer = transferRows[0];
+
 			if (!transfer) {
-				await connection.rollback();
+				await connection.query("ROLLBACK");
 				return [404, { error: "Transfer not found" }];
 			}
 
-			const items = await query<
-				{
-					id: number;
-					transfer_id: string;
-					user_id: string;
-					item_uaid: string;
-				}[]
-			>(connection, "SELECT * FROM item_transfer_items WHERE transfer_id = ?", [transfer_id]);
+			const { rows: items } = await connection.query<{
+				id: number;
+				transfer_id: string;
+				user_id: string;
+				item_uaid: string;
+			}>("SELECT * FROM item_transfer_items WHERE transfer_id = $1", [transfer_id]);
 
 			if (items.length === 0) {
-				await query(connection, "DELETE FROM item_transfers WHERE transfer_id = ?", [transfer_id]);
-				await connection.commit();
+				await connection.query("DELETE FROM item_transfers WHERE transfer_id = $1", [transfer_id]);
+				await connection.query("COMMIT");
 				return [404, { error: "No items in transfer" }];
 			}
 
 			const userasset_pairs = items.map((item) => [item.user_id, item.item_uaid]);
-			const owned_items = await query<
-				{
-					owner_id: string;
-					user_asset_id: string;
-				}[]
-			>(
-				connection,
-				`SELECT owner_id, user_asset_id
-				 FROM item_copies
-				 WHERE (owner_id, user_asset_id) IN (${userasset_pairs.map(() => "(?, ?)").join(", ")})
-				 FOR UPDATE NOWAIT`,
-				userasset_pairs.flat(),
-			);
+			const pairPlaceholders = userasset_pairs.map((_, idx) => `($${idx * 2 + 1}, $${idx * 2 + 2})`).join(", ");
+			const owned_items_query = `SELECT owner_id, user_asset_id FROM item_copies WHERE (owner_id, user_asset_id) IN (${pairPlaceholders}) FOR UPDATE NOWAIT`;
+			const { rows: owned_items } = await connection.query<{ owner_id: string; user_asset_id: string }>(owned_items_query, userasset_pairs.flat());
 
 			const owned_set = new Set(owned_items.map((oi) => `${oi.owner_id}_${oi.user_asset_id}`));
 			for (const item of items) {
 				if (!owned_set.has(`${item.user_id}_${item.item_uaid}`)) {
-					await query(connection, "DELETE FROM item_transfers WHERE transfer_id = ?", [transfer_id]);
-					await connection.commit();
+					await connection.query("DELETE FROM item_transfers WHERE transfer_id = $1", [transfer_id]);
+					await connection.query("COMMIT");
 					return [403, { error: "Item not owned by user" }];
 				}
 			}
 
 			if (!swap) {
-				await query(
-					connection,
-					`UPDATE item_copies
-					 SET owner_id = ?
-					 WHERE user_asset_id IN (${items.map(() => "?").join(", ")})`,
+				const uaidPlaceholders = items.map((_, idx) => `$${idx + 2}`).join(", ");
+				await connection.query(
+					`UPDATE item_copies SET owner_id = $1 WHERE user_asset_id IN (${uaidPlaceholders})`,
 					[user_id, ...items.map((item) => item.item_uaid)],
 				);
 			} else {
 				const distinct_owners = Array.from(new Set(items.map((it) => it.user_id)));
 				if (distinct_owners.length !== 2) {
-					await connection.rollback();
+					await connection.query("ROLLBACK");
 					return [400, { error: "Swap requires exactly two distinct users in the transfer" }];
 				}
 
@@ -121,32 +108,28 @@ export default {
 				const owner_b_items = items.filter((i) => i.user_id === owner_b).map((i) => i.item_uaid);
 
 				if (owner_a_items.length > 0) {
-					await query(
-						connection,
-						`UPDATE item_copies
-						 SET owner_id = ?
-						 WHERE user_asset_id IN (${owner_a_items.map(() => "?").join(", ")})`,
+					const ownerAPlaceholders = owner_a_items.map((_, idx) => `$${idx + 2}`).join(", ");
+					await connection.query(
+						`UPDATE item_copies SET owner_id = $1 WHERE user_asset_id IN (${ownerAPlaceholders})`,
 						[owner_b, ...owner_a_items],
 					);
 				}
 				if (owner_b_items.length > 0) {
-					await query(
-						connection,
-						`UPDATE item_copies
-						 SET owner_id = ?
-						 WHERE user_asset_id IN (${owner_b_items.map(() => "?").join(", ")})`,
+					const ownerBPlaceholders = owner_b_items.map((_, idx) => `$${idx + 2}`).join(", ");
+					await connection.query(
+						`UPDATE item_copies SET owner_id = $1 WHERE user_asset_id IN (${ownerBPlaceholders})`,
 						[owner_a, ...owner_b_items],
 					);
 				}
 			}
 
-			await query(connection, "UPDATE item_transfers SET status = 'confirmed' WHERE transfer_id = ?", [transfer_id]);
+			await connection.query("UPDATE item_transfers SET status = 'confirmed' WHERE transfer_id = $1", [transfer_id]);
 
-			await connection.commit();
+			await connection.query("COMMIT");
 			return [200, { status: "OK" }];
 		} catch (error) {
 			console.log(error)
-			await connection.rollback();
+			await connection.query("ROLLBACK");
 			return [500, { error: "Failed to create transfer" }];
 		} finally {
 			connection.release();

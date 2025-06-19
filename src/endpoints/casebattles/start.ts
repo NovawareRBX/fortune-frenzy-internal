@@ -2,7 +2,7 @@ import { FastifyRequest } from "fastify";
 import { getRedisConnection } from "../../service/redis";
 import { CasebattlesRedisManager } from "../../service/casebattles-redis";
 import getUserInfo from "../../utilities/getUserInfo";
-import { getMariaConnection } from "../../service/mariadb";
+import { getPostgresConnection } from "../../service/postgres";
 import { z } from "zod";
 
 const startParamsSchema = z.object({
@@ -25,8 +25,8 @@ export default {
 		const { id } = paramsParse.data;
 		const redis = await getRedisConnection();
 		if (!redis) return [500, { message: "Failed to connect to Redis" }];
-		const connection = await getMariaConnection();
-		if (!connection) return [500, { message: "Failed to connect to MariaDB" }];
+		const connection = await getPostgresConnection();
+		if (!connection) return [500, { message: "Failed to connect to database" }];
 
 		const casebattlesRedisManager = new CasebattlesRedisManager(redis, request.server);
 		const casebattle = await casebattlesRedisManager.getCaseBattle(id);

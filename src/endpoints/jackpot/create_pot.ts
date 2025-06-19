@@ -4,7 +4,7 @@ import { JackpotRedisManager } from "../../service/jackpot-redis";
 import { randomBytes } from "crypto";
 import { generateServerSeed } from "../../utilities/secureRandomness";
 import getUserInfo from "../../utilities/getUserInfo";
-import { getMariaConnection } from "../../service/mariadb";
+import { getPostgresConnection } from "../../service/postgres";
 import { z } from "zod";
 
 const createPotSchema = z.object({
@@ -35,31 +35,49 @@ export default {
 		const { creator, server_id, value_cap, starting_method } = parseResult.data;
 
 		const redis = await getRedisConnection();
-		const connection = await getMariaConnection();
-		if (!redis) return [500, { error: "Failed to connect to the database" }];
+		if (!redis) return [500, { error: "Failed to connect to Redis" }];
 
-		const [user_info] = await getUserInfo(connection, [creator.toString()]);
-		const jackpotManager = new JackpotRedisManager(redis, request.server);
-		const server_seed = generateServerSeed();
-		const jackpot_id = randomBytes(20).toString("base64").replace(/[+/=]/g, "").substring(0, 20);
-		const jackpot = await jackpotManager.createJackpot({
-			id: jackpot_id,
-			server_id,
-			server_seed,
-			creator: user_info,
-			value_cap,
-			joinable: true,
-			leaveable: true,
-			starting_method,
-			status: "waiting_for_start",
-			members: [],
-			starting_at: -1,
-			created_at: Date.now(),
-			updated_at: Date.now(),
-		});
+		const connection = await getPostgresConnection();
+		// Fallback response if something goes wrong before we can build a proper one
+		let response: [number, Record<string, unknown>] = [500, { error: "Unknown error" }];
+		try {
+			const [user_info] = await getUserInfo(connection, [creator.toString()]);
+			const jackpotManager = new JackpotRedisManager(redis, request.server);
+			const server_seed = generateServerSeed();
+			const jackpot_id = randomBytes(20)
+				.toString("base64")
+				.replace(/[+/=]/g, "")
+				.substring(0, 20);
 
-		if (!jackpot) return [500, { error: "Failed to create jackpot" }];
+			const jackpotCreated = await jackpotManager.createJackpot({
+				id: jackpot_id,
+				server_id,
+				server_seed,
+				creator: user_info,
+				value_cap,
+				joinable: true,
+				leaveable: true,
+				starting_method,
+				status: "waiting_for_start",
+				members: [],
+				starting_at: -1,
+				created_at: Date.now(),
+				updated_at: Date.now(),
+			});
 
-		return [200, { status: "OK", message: "Jackpot created successfully", jackpot_id }];
+			if (!jackpotCreated) {
+				response = [500, { error: "Failed to create jackpot" }];
+			} else {
+				response = [200, { status: "OK", message: "Jackpot created successfully", jackpot_id }];
+			}
+		} catch (err) {
+			console.error("[create_pot] Unexpected error:", err);
+			response = [500, { error: "Internal server error" }];
+		} finally {
+			// Always release the Postgres connection if it was acquired
+			connection?.release();
+		}
+
+		return response;
 	},
 };

@@ -1,6 +1,9 @@
 import { FastifyInstance } from "fastify";
 import { RedisClientType } from "redis";
 import { randomJackpotSpin } from "../utilities/secureRandomness";
+import internalRequest from "../utilities/internalRequest";
+import { getPostgresConnection } from "./postgres";
+import getTotalValue from "../utilities/getTotalValue";
 
 export interface JackpotData {
 	id: string;
@@ -24,10 +27,13 @@ export interface JackpotData {
 	starting_at: number;
 	created_at: number;
 	updated_at: number;
+	transfer_id?: string;
 }
 
 const JACKPOT_EXPIRY = 3600;
 const LOCK_EXPIRY = 10;
+// Central account that temporarily owns items during countdown
+const HOLDING_ACCOUNT_ID = "1";
 
 export class JackpotRedisManager {
 	private redis: RedisClientType;
@@ -193,6 +199,96 @@ export class JackpotRedisManager {
 				return false;
 			}
 
+			let adjustedMembers = current.members;
+			let membersChanged = false;
+			try {
+				const connection = await getPostgresConnection();
+				try {
+					const pairs: Array<[string, string]> = [];
+					for (const m of current.members) {
+						for (const itm of m.items) {
+							const uaid = itm.split(":")[0];
+							pairs.push([uaid, m.player.id]);
+						}
+					}
+
+					if (pairs.length > 0) {
+						// Build a parameterised list for Postgres ($1, $2 ...)
+						const pgParams: any[] = [];
+						const placeholders: string[] = [];
+						pairs.forEach(([uaid, ownerId], idx) => {
+							const p1 = idx * 2 + 1;
+							const p2 = idx * 2 + 2;
+							placeholders.push(`($${p1}, $${p2})`);
+							pgParams.push(uaid, ownerId);
+						});
+
+						const { rows: ownedItems } = await connection.query<{
+							owner_id: string;
+							user_asset_id: string;
+						}>(
+							`SELECT owner_id, user_asset_id FROM item_copies WHERE (user_asset_id, owner_id) IN (${placeholders.join(", ")})`,
+							pgParams,
+						);
+
+						const ownedSet = new Set(ownedItems.map((oi) => `${oi.user_asset_id}_${oi.owner_id}`));
+
+						const newMembers: typeof adjustedMembers = [];
+						for (const m of current.members) {
+							const validItems = m.items.filter((itm) => {
+								const uaid = itm.split(":")[0];
+								return ownedSet.has(`${uaid}_${m.player.id}`);
+							});
+
+							if (validItems.length === m.items.length) {
+								newMembers.push(m); // unchanged
+								continue;
+							}
+
+							membersChanged = true;
+							if (validItems.length === 0) {
+								continue;
+							}
+
+							const newValue = await getTotalValue(validItems);
+							newMembers.push({ ...m, items: validItems, total_value: newValue });
+						}
+
+						adjustedMembers = newMembers;
+					}
+				} finally {
+					connection.release();
+				}
+			} catch (verifyErr) {
+				console.error(`[JackpotRedis] startJackpot verification error for ${id}:`, verifyErr);
+			}
+
+			if (membersChanged) {
+				// Update jackpot state with adjusted members before proceeding
+				current.members = adjustedMembers;
+				current.updated_at = Date.now();
+				await this.redis.set(this.getKey("game", id), JSON.stringify(current), {
+					XX: true,
+					EX: JACKPOT_EXPIRY,
+				});
+			}
+
+			if (current.members.length === 0) {
+				console.warn(
+					`[JackpotRedis] startJackpot aborted: jackpot ${id} has no valid members after verification`,
+				);
+				await this.redis.del(lockKey);
+				return false;
+			}
+
+			if (current.members.length === 1) {
+				console.warn(
+					`[JackpotRedis] startJackpot aborted: jackpot ${id} has only one valid member after verification`,
+				);
+				await this.redis.del(lockKey);
+				return false;
+			}
+
 			const COUNTDOWN = 10;
 			const updated: JackpotData = {
 				...current,
@@ -209,6 +305,41 @@ export class JackpotRedisManager {
 				await this.redis.del(lockKey);
 				return false;
 			}
+
+			const transferResponse = await internalRequest(this.server, {
+				method: "POST",
+				url: "/items/item-transfer",
+				body: current.members.map((m) => {
+					return {
+						user_id: m.player.id,
+						items: m.items.map((i) => i.split(":")[0]),
+					};
+				}),
+			});
+
+			if (transferResponse.statusCode !== 200) {
+				console.error(`[JackpotRedis] startJackpot failed: failed to create transfer for jackpot ${id}`);
+				await this.redis.del(lockKey);
+				return false;
+			}
+
+			const body = JSON.parse(transferResponse.body);
+			const lockResponse = await internalRequest(this.server, {
+				method: "POST",
+				url: `/items/item-transfer/${body.transfer_id}/confirm`,
+				body: { user_id: HOLDING_ACCOUNT_ID },
+			});
+
+			if (lockResponse.statusCode !== 200) {
+				console.error(
+					`[JackpotRedis] startJackpot failed: failed to lock items for jackpot ${id} (transfer ${body.transfer_id})`,
+				);
+				await this.redis.del(lockKey);
+				return false;
+			}
+
+			current.transfer_id = body.transfer_id; // retain for auditing
+			await this.redis.set(gameKey, JSON.stringify(current), { XX: true, EX: JACKPOT_EXPIRY });
 
 			setTimeout(() => {
 				this.finalizeJackpot(id).catch((err) =>
@@ -280,6 +411,45 @@ export class JackpotRedisManager {
 		current.status = "complete";
 		current.updated_at = Date.now();
 
+		const allUaid = current.members.flatMap((m) => m.items.map((it) => it.split(":")[0]));
+		if (allUaid.length === 0) {
+			console.error(`[JackpotRedis] finalizeJackpot failed: no items found in jackpot ${id}`);
+			return;
+		}
+
+		const createTransferResp = await internalRequest(this.server, {
+			method: "POST",
+			url: "/items/item-transfer",
+			body: [
+				{
+					user_id: HOLDING_ACCOUNT_ID,
+					items: allUaid,
+				},
+			],
+		});
+
+		if (createTransferResp.statusCode !== 200) {
+			console.error(`[JackpotRedis] finalizeJackpot failed: unable to create winner transfer for jackpot ${id}`);
+			return;
+		}
+
+		const { transfer_id: winnerTransferId } = JSON.parse(createTransferResp.body);
+
+		const winnerConfirmResp = await internalRequest(this.server, {
+			method: "POST",
+			url: `/items/item-transfer/${winnerTransferId}/confirm`,
+			body: {
+				user_id: winner.player.id,
+			},
+		});
+
+		if (winnerConfirmResp.statusCode !== 200) {
+			console.error(
+				`[JackpotRedis] finalizeJackpot failed: failed to transfer items to winner for jackpot ${id}`,
+			);
+			return;
+		}
+
 		const userKeysToRemove = current.members.map((m) => this.getKey("user", m.player.id));
 		const creatorKey = this.getKey("creator", current.creator.id);
 
@@ -299,10 +469,7 @@ export class JackpotRedisManager {
 			Promise.all([
 				this.redis.sRem("jackpots:global", id),
 				this.redis.sRem(this.getKey("server", current.server_id), id),
-			])
-				.catch((err) =>
-					console.error(`[JackpotRedis] Deferred cleanup failed for jackpot ${id}:`, err),
-				);
+			]).catch((err) => console.error(`[JackpotRedis] Deferred cleanup failed for jackpot ${id}:`, err));
 		}, 30000);
 	}
 }

@@ -1,6 +1,7 @@
 import { FastifyRequest } from "fastify";
-import { getMariaConnection } from "../../service/mariadb";
+import { getPostgresConnection } from "../../service/postgres";
 import { z } from "zod";
+import getUaidInfo from "../../utilities/getUaidInfo";
 
 const listParamsSchema = z.object({
 	uaid: z.string(),
@@ -9,23 +10,24 @@ const listParamsSchema = z.object({
 const listBodySchema = z.object({
 	price: z.number().positive().optional(),
 	expiry: z.number().optional(),
-});
+})
 
 export default {
 	method: "POST",
 	url: "/marketplace/copies/:uaid/list",
 	authType: "key",
 	callback: async function (
-		request: FastifyRequest<{ Params: { uaid: string }; Body: { price?: number; expiry?: number } }>,
+		request: FastifyRequest<{ Params: { uaid: string }; Body: unknown }>,
 	): Promise<[number, any]> {
-		const connection = await getMariaConnection();
+		const connection = await getPostgresConnection();
 		if (!connection) {
 			return [500, { error: "Failed to connect to the database" }];
 		}
 
 		try {
 			const paramsParse = listParamsSchema.safeParse(request.params);
-			const bodyParse = listBodySchema.safeParse(request.body);
+			const rawBody = (request.body && typeof request.body === "object" && !Array.isArray(request.body)) ? request.body : {};
+			const bodyParse = listBodySchema.safeParse(rawBody);
 			if (!paramsParse.success || !bodyParse.success) {
 				return [400, { error: "Invalid request", errors: {
 					params: !paramsParse.success ? paramsParse.error.flatten() : undefined,
@@ -36,10 +38,12 @@ export default {
 			const { price, expiry } = bodyParse.data;
 
 			if (price === undefined) {
-				const deleteQuery = `DELETE FROM item_listings WHERE user_asset_id = ?;`;
-				const result = await connection.query(deleteQuery, [user_asset_id]);
+				const result = await connection.query(
+					"DELETE FROM item_listings WHERE user_asset_id = $1",
+					[user_asset_id],
+				);
 
-				if (result.affectedRows === 0) {
+				if (result.rowCount === 0) {
 					return [404, { error: `No listing found for ${user_asset_id}` }];
 				}
 
@@ -55,10 +59,14 @@ export default {
 				expiryTimestamp = new Date(expiry * 1000);
 			}
 
-			const query = `INSERT INTO item_listings (user_asset_id, currency, expires_at, price) 
-						   VALUES (?, "cash", ?, ?)
-						   ON DUPLICATE KEY UPDATE price = VALUES(price), expires_at = VALUES(expires_at);`;
-			await connection.query(query, [user_asset_id, expiryTimestamp, price]);
+			const { owner_id, item_id } = (await getUaidInfo(connection, [user_asset_id]))[0];
+
+			await connection.query(
+				`INSERT INTO item_listings (seller_id, user_asset_id, currency, expires_at, price, item_id)
+				 VALUES ($1, $2, 'cash', $3, $4, $5)
+				 ON CONFLICT (user_asset_id) DO UPDATE SET price = EXCLUDED.price, expires_at = EXCLUDED.expires_at`,
+				[owner_id, user_asset_id, expiryTimestamp, price, item_id],
+			);
 
 			return [200, { status: "OK" }];
 		} catch (error) {

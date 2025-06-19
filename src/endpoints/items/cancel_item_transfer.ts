@@ -1,6 +1,5 @@
 import { FastifyRequest } from "fastify";
-import { getMariaConnection } from "../../service/mariadb";
-import query from "../../utilities/smartQuery";
+import { getPostgresConnection } from "../../service/postgres";
 import { z } from "zod";
 
 const cancelParamsSchema = z.object({
@@ -25,7 +24,7 @@ export default {
 			};
 		}>,
 	): Promise<[number, any]> {
-		const connection = await getMariaConnection();
+		const connection = await getPostgresConnection();
 		if (!connection) {
 			return [500, { error: "Failed to connect to the database" }];
 		}
@@ -43,51 +42,49 @@ export default {
 			const { transfer_id } = paramsParse.data;
 			const { reason } = bodyParse.data;
 
-			await connection.beginTransaction();
+			await connection.query("BEGIN");
 
 			// Get transfer and check if it exists
-			const [transfer] = await query(connection, "SELECT * FROM item_transfers WHERE transfer_id = ?", [transfer_id]);
+			const { rows: transferRows } = await connection.query("SELECT * FROM item_transfers WHERE transfer_id = $1", [transfer_id]);
+			const transfer = transferRows[0];
 			if (!transfer) {
-				await connection.rollback();
+				await connection.query("ROLLBACK");
 				return [404, { error: "Transfer not found" }];
 			}
 
 			// Check if transfer is already confirmed
 			if (transfer.status === 'confirmed') {
-				await connection.rollback();
+				await connection.query("ROLLBACK");
 				return [400, { error: "Cannot cancel confirmed transfer" }];
 			}
 
 			// Get all items in the transfer
-			const items = await query<
-				{
-					id: number;
-					transfer_id: string;
-					user_id: string;
-					item_uaid: string;
-				}[]
-			>(connection, "SELECT * FROM item_transfer_items WHERE transfer_id = ?", [transfer_id]);
+			const { rows: items } = await connection.query<{
+				id: number;
+				transfer_id: string;
+				user_id: string;
+				item_uaid: string;
+			}>("SELECT * FROM item_transfer_items WHERE transfer_id = $1", [transfer_id]);
 
 			if (items.length === 0) {
 				// If no items, just delete the transfer
-				await query(connection, "DELETE FROM item_transfers WHERE transfer_id = ?", [transfer_id]);
-				await connection.commit();
+				await connection.query("DELETE FROM item_transfers WHERE transfer_id = $1", [transfer_id]);
+				await connection.query("COMMIT");
 				return [200, { status: "OK", message: "Transfer canceled (no items found)" }];
 			}
 
 			// Mark transfer as canceled
-			await query(
-				connection,
-				"UPDATE item_transfers SET status = 'canceled', cancel_reason = ? WHERE transfer_id = ?",
+			await connection.query(
+				"UPDATE item_transfers SET status = 'canceled', cancel_reason = $1 WHERE transfer_id = $2",
 				[reason || 'Manual cancellation', transfer_id]
 			);
 
-			await connection.commit();
+			await connection.query("COMMIT");
 
 			return [200, { status: "OK", message: "Transfer canceled successfully" }];
 		} catch (error) {
 			console.error("cancel_item_transfer", error);
-			await connection.rollback();
+			await connection.query("ROLLBACK");
 
 			return [500, { error: "Failed to cancel transfer" }];
 		} finally {

@@ -1,9 +1,9 @@
 import { FastifyRequest } from "fastify";
-import { getMariaConnection } from "../../service/mariadb";
+import { getPostgresConnection } from "../../service/postgres";
 import getRandomWeightedEntry, { Entry } from "../../utilities/getRandomWeightedEntry";
-import smartQuery from "../../utilities/smartQuery";
 import { ItemCase } from "../../types/Endpoints";
 import { z } from "zod";
+import { generateFreshUaid } from "../../utilities/generateFreshUaid";
 
 const openCaseParamsSchema = z.object({
 	id: z.string(),
@@ -21,7 +21,7 @@ export default {
 	callback: async function (
 		request: FastifyRequest<{ Params: { id: string }; Body: { user_id: string; lucky: boolean } }>,
 	): Promise<[number, any]> {
-		const connection = await getMariaConnection();
+		const connection = await getPostgresConnection();
 		if (!connection) {
 			return [500, { error: "Failed to connect to the database" }];
 		}
@@ -39,7 +39,8 @@ export default {
 			const { id } = paramsParse.data;
 			const { user_id, lucky } = bodyParse.data;
 
-			const [item_case] = await smartQuery<ItemCase[]>(connection, "SELECT * FROM cases WHERE id = ?", [id]);
+			const { rows: item_cases } = await connection.query<ItemCase>("SELECT * FROM cases WHERE id = $1", [id]);
+			const item_case = item_cases[0];
 
 			if (!item_case) {
 				return [404, { error: "Case not found" }];
@@ -49,7 +50,8 @@ export default {
 				typeof item_case.items === "string" ? (JSON.parse(item_case.items) as Entry[]) : item_case.items;
 			item_case.ui_data = typeof item_case.ui_data === "string" ? JSON.parse(item_case.ui_data) : item_case.ui_data;
 
-			const [user] = await smartQuery(connection, "SELECT * FROM users WHERE user_id = ?", [user_id]);
+			const { rows: userRows } = await connection.query("SELECT * FROM users WHERE user_id = $1", [user_id]);
+			const user = userRows[0];
 			if (!user) {
 				return [404, { error: "User not found" }];
 			}
@@ -67,23 +69,21 @@ export default {
 				: item_case.items;
 
 			const entry = getRandomWeightedEntry(adjustedItems);
+			const uaid = await generateFreshUaid(connection);
 			const item_id = entry.id;
 
-			await connection.beginTransaction();
-			await connection.query("UPDATE items SET total_unboxed = total_unboxed + 1 WHERE id = ?", [item_id]);
-			await connection.query("INSERT INTO item_copies (item_id, owner_id) VALUES (?, ?)", [item_id, user_id]);
+			await connection.query("BEGIN");
+			await connection.query("UPDATE items SET total_unboxed = total_unboxed + 1 WHERE id = $1", [item_id]);
+			await connection.query("INSERT INTO item_copies (item_id, owner_id, user_asset_id) VALUES ($1, $2, $3)", [item_id, user_id, uaid]);
 
 			const targetItem = item_case.items.find((item) => item.id === item_id);
 			if (targetItem) {
 				targetItem.claimed += 1;
 			}
 			const updatedItemsJSON = JSON.stringify(item_case.items);
-			await connection.query("UPDATE cases SET items = ?, opened_count = opened_count + 1 WHERE id = ?", [
-				updatedItemsJSON,
-				id,
-			]);
+			await connection.query("UPDATE cases SET items = $1, opened_count = opened_count + 1 WHERE id = $2", [updatedItemsJSON, id]);
 
-			await connection.commit();
+			await connection.query("COMMIT");
 
 			return [
 				200,
@@ -97,7 +97,8 @@ export default {
 				},
 			];
 		} catch (error) {
-			await connection.rollback();
+			await connection.query("ROLLBACK");
+			console.error(error);
 			return [500, { error: "Internal server error" }];
 		} finally {
 			connection.release();

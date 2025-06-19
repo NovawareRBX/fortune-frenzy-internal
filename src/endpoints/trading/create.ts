@@ -1,8 +1,7 @@
 import { FastifyRequest } from "fastify";
 import { z } from "zod";
-import { getMariaConnection } from "../../service/mariadb";
+import { getPostgresConnection } from "../../service/postgres";
 import { Trade, TradeItem } from "../../types/Endpoints";
-import smartQuery from "../../utilities/smartQuery";
 import doSelfHttpRequest from "../../utilities/internalRequest";
 import getUserInfo from "../../utilities/getUserInfo";
 import getItemString from "../../utilities/getItemString";
@@ -36,20 +35,17 @@ export default {
 
 		const { initiator_id, receiver_id, initiator_items, receiver_items } = bodyParse.data;
 
-		const connection = await getMariaConnection();
+		const connection = await getPostgresConnection();
 		if (!connection) {
 			return [500, { error: "Failed to connect to the database" }];
 		}
 
 		try {
-			const existing_trades = await smartQuery(
-				connection,
-				`
-					SELECT t.trade_id, ti.item_uaid, t.initiator_user_id, t.receiver_user_id 
-					FROM trades t
-					JOIN trade_items ti ON t.trade_id = ti.trade_id
-					WHERE t.initiator_user_id = ? AND t.receiver_user_id = ? AND t.status = 'pending'
-				`,
+			const { rows: existing_trades } = await connection.query(
+				`SELECT t.trade_id, ti.item_uaid, t.initiator_user_id, t.receiver_user_id
+				 FROM trades t
+				 JOIN trade_items ti ON t.trade_id = ti.trade_id
+				 WHERE t.initiator_user_id = $1 AND t.receiver_user_id = $2 AND t.status = 'pending'`,
 				[initiator_id, receiver_id],
 			);
 
@@ -72,9 +68,8 @@ export default {
 				}
 			}
 
-			const rows = await smartQuery<{ user_asset_id: string; owner_id: string }[]>(
-				connection,
-				"SELECT user_asset_id, owner_id FROM item_copies WHERE user_asset_id IN (?)",
+			const { rows } = await connection.query<{ user_asset_id: string; owner_id: string }>(
+				"SELECT user_asset_id, owner_id FROM item_copies WHERE user_asset_id = ANY($1::text[])",
 				[initiator_items.concat(receiver_items)],
 			);
 
@@ -108,12 +103,12 @@ export default {
 			if (response.statusCode !== 200) return [500, { error: "Internal Server Error" }];
 			const transfer_id = JSON.parse(response.body).transfer_id as string;
 
-			await connection.beginTransaction();
-			const [row] = await smartQuery(
-				connection,
-				"INSERT INTO trades (initiator_user_id, receiver_user_id, transfer_id) VALUES (?, ?, ?) RETURNING trade_id, status, created_at, updated_at",
+			await connection.query('BEGIN');
+			const { rows: insertRows } = await connection.query(
+				"INSERT INTO trades (initiator_user_id, receiver_user_id, transfer_id) VALUES ($1, $2, $3) RETURNING trade_id, status, created_at, updated_at",
 				[initiator_id, receiver_id, transfer_id],
 			);
+			const row = insertRows[0];
 			const trade_id = row.trade_id;
 			const items: TradeItem[] = [
 				...initiator_items.map((item) => ({ item_uaid: item, trade_id, user_id: initiator_id })),
@@ -121,11 +116,11 @@ export default {
 			];
 
 			const values = items.map((item) => [item.item_uaid, item.trade_id, item.user_id]);
-			await smartQuery(
-				connection,
-				`INSERT INTO trade_items (item_uaid, trade_id, user_id) VALUES ${values
-					.map(() => "(?, ?, ?)")
-					.join(", ")}`,
+			const placeholders = values
+				.map((_, idx) => `($${idx * 3 + 1}, $${idx * 3 + 2}, $${idx * 3 + 3})`)
+				.join(", ");
+			await connection.query(
+				`INSERT INTO trade_items (item_uaid, trade_id, user_id) VALUES ${placeholders}`,
 				values.flat(),
 			);
 
@@ -146,7 +141,7 @@ export default {
 			const initiator_items_string = await getItemString(connection, initiator_items);
 			const receiver_items_string = await getItemString(connection, receiver_items);
 
-			await connection.commit();
+			await connection.query('COMMIT');
 			return [
 				200,
 				{
@@ -174,7 +169,7 @@ export default {
 			];
 		} catch (error) {
 			console.error(error);
-			await connection.rollback();
+			await connection.query('ROLLBACK');
 			return [500, { error: "Internal Server Error" }];
 		} finally {
 			connection.release();

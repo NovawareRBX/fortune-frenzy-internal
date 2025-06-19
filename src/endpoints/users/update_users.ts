@@ -1,6 +1,6 @@
 import { FastifyRequest } from "fastify";
 import { z } from "zod";
-import { getMariaConnection } from "../../service/mariadb";
+import { getPostgresConnection } from "../../service/postgres";
 
 // Zod schemas for validating the request body
 const recentActivitySchema = z.object({
@@ -60,14 +60,13 @@ export default {
 			return [400, { error: "Invalid request body", errors: bodyParse.error.flatten() }];
 		}
 
-		const connection = await getMariaConnection();
+		const connection = await getPostgresConnection();
 		if (!connection) {
 			return [500, { error: "Failed to connect to the database" }];
 		}
 
 		try {
 			const users = bodyParse.data;
-			const placeholders = users.map(() => "(?, ?, ?, ?, ?, ?)").join(", ");
 			const values: any[] = [];
 			const recent_activity_values: any[] = [];
 			const meiliUsers: any[] = [];
@@ -100,29 +99,38 @@ export default {
 				});
 			});
 
-			// Insert/update users in MariaDB
+			// Build parameterized placeholders for Postgres
+			let paramIdx = 1;
+			const placeholders = users
+				.map(() => {
+					const tuple = Array.from({ length: 6 }, () => `$${paramIdx++}`).join(", ");
+					return `(${tuple})`;
+				})
+				.join(", ");
+
+			// Upsert users in Postgres
 			await connection.query(
 				`INSERT INTO users (user_id, name, display_name, statistics, current_cash, current_value)
 				 VALUES ${placeholders}
-				 ON DUPLICATE KEY UPDATE
-					 name = VALUES(name),
-					 display_name = VALUES(display_name),
-					 statistics = VALUES(statistics),
-					 current_cash = VALUES(current_cash),
-					 current_value = VALUES(current_value)
-					 `,
+				 ON CONFLICT (user_id) DO UPDATE SET
+					 name = EXCLUDED.name,
+					 display_name = EXCLUDED.display_name,
+					 statistics = EXCLUDED.statistics,
+					 current_cash = EXCLUDED.current_cash,
+					 current_value = EXCLUDED.current_value`,
 				values,
 			);
 
-			// Insert recent activity
+			// Insert recent activity if present
 			if (recent_activity_values.length > 0) {
-				const raPlaceholders = Array(Math.floor(recent_activity_values.length / 3))
-					.fill("(?, ?, ?)")
-					.join(", ");
+				const raTuples: string[] = [];
+				for (let i = 0; i < recent_activity_values.length / 3; i++) {
+					const base = i * 3 + 1;
+					raTuples.push(`($${base}, $${base + 1}, $${base + 2})`);
+				}
 
 				await connection.query(
-					`INSERT INTO recent_game_activity (user_id, image, text)
-					 VALUES ${raPlaceholders}`,
+					`INSERT INTO recent_game_activity (user_id, image, text) VALUES ${raTuples.join(", ")}`,
 					recent_activity_values,
 				);
 			}

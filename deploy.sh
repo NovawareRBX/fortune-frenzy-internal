@@ -14,7 +14,7 @@ colored_echo() {
 }
 
 run() {
-  "$@" > /dev/null 2>&1
+  "$@"
 }
 
 no_logs=false
@@ -26,10 +26,10 @@ colored_echo "$green" "STARTING DEPLOYMENT..."
 
 current_port=$(grep -oP 'proxy_pass http://127\.0\.0\.1:\K[0-9]+' /etc/nginx/sites-available/nova-api)
 
-if [ "$current_port" == "3000" ]; then
-  new_port="3002"
+if [ "$current_port" == "3001" ]; then
+  new_port="3100"
 else
-  new_port="3000"
+  new_port="3101"
 fi
 
 colored_echo "$blue" "CURRENT PORT: $current_port"

@@ -3,7 +3,7 @@ import { getRedisConnection } from "../../service/redis";
 import { CaseBattleData, CasebattlesRedisManager } from "../../service/casebattles-redis";
 import { randomBytes, randomUUID } from "crypto";
 import getUserInfo from "../../utilities/getUserInfo";
-import { getMariaConnection } from "../../service/mariadb";
+import { getPostgresConnection } from "../../service/postgres";
 import { generateServerSeed } from "../../utilities/secureRandomness";
 import { z } from "zod";
 
@@ -71,8 +71,8 @@ export default {
 
 		const redis = await getRedisConnection();
 		if (!redis) return [500, { message: "Failed to connect to Redis" }];
-		const connection = await getMariaConnection();
-		if (!connection) return [500, { message: "Failed to connect to MariaDB" }];
+		const connection = await getPostgresConnection();
+		if (!connection) return [500, { message: "Failed to connect to database" }];
 
 		const casebattlesRedisManager = new CasebattlesRedisManager(redis, request.server);
 		const casebattleId = randomUUID();

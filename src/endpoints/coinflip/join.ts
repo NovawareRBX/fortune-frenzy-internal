@@ -1,6 +1,6 @@
 import { FastifyRequest } from "fastify";
 import { getRedisConnection } from "../../service/redis";
-import { getMariaConnection } from "../../service/mariadb";
+import { getPostgresConnection } from "../../service/postgres";
 import getItemString from "../../utilities/getItemString";
 import getUserInfo from "../../utilities/getUserInfo";
 import doSelfHttpRequest from "../../utilities/internalRequest";
@@ -38,7 +38,7 @@ export default {
 		const { user_id, items } = bodyParse.data;
 
 		const redis = await getRedisConnection();
-		const connection = await getMariaConnection();
+		const connection = await getPostgresConnection();
 
 		if (!connection || !redis) {
 			return [500, { error: "Failed to connect to the database" }];
@@ -47,8 +47,8 @@ export default {
 		const coinflipManager = new CoinflipRedisManager(redis, request.server);
 
 		try {
-			const confirmed_items = await connection.query(
-				"SELECT user_asset_id FROM item_copies WHERE user_asset_id IN (?) AND owner_id = ?",
+			const { rows: confirmed_items } = await connection.query<{ user_asset_id: string }>(
+				"SELECT user_asset_id FROM item_copies WHERE user_asset_id = ANY($1::text[]) AND owner_id = $2",
 				[items, user_id],
 			);
 

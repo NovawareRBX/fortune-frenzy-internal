@@ -4,7 +4,7 @@ import { getRedisConnection } from "../../service/redis";
 import getTotalValue from "../../utilities/getTotalValue";
 import { CoinflipData } from "./create";
 import doSelfHttpRequest from "../../utilities/internalRequest";
-import { getMariaConnection } from "../../service/mariadb";
+import { getPostgresConnection } from "../../service/postgres";
 import { CoinflipRedisManager } from "../../service/coinflip-redis";
 import { z } from "zod";
 
@@ -28,13 +28,13 @@ export default {
 		const { coinflip_id: id } = paramsParse.data;
 
 		const redis = await getRedisConnection();
-		const maria = await getMariaConnection();
+		const pgClient = await getPostgresConnection();
 
 		if (!id) {
 			return [400, { error: "Invalid request" }];
 		}
 
-		if (!redis || !maria) {
+		if (!redis || !pgClient) {
 			return [500, { error: "Internal Server Error" }];
 		}
 
@@ -108,9 +108,9 @@ export default {
 					coinflip.status = "completed";
 					coinflip.transfer_id = body.transfer_id;
 
-					// Store in MariaDB first before completing in Redis
-					await maria.query(
-						"INSERT INTO past_coinflips (id, player1_id, player2_id, player1_items, player2_items, status, type, server_id, player1_coin, winning_coin, transfer_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+					// Store in Postgres first before completing in Redis
+					const insertRes = await pgClient.query<{ auto_id: number }>(
+						"INSERT INTO past_coinflips (id, player1_id, player2_id, player1_items, player2_items, status, type, server_id, player1_coin, winning_coin, transfer_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING auto_id",
 						[
 							id,
 							coinflip.player1.id,
@@ -125,9 +125,7 @@ export default {
 							coinflip.transfer_id,
 						],
 					);
-
-					const [auto_id] = await maria.query("SELECT auto_id FROM past_coinflips WHERE id = ?", [id]);
-					coinflip.auto_id = auto_id.auto_id;
+					coinflip.auto_id = insertRes.rows[0].auto_id;
 
 					await coinflipManager.completeCoinflip(id, coinflip);
 
@@ -177,6 +175,8 @@ export default {
 					
 					await redis.del(lockKey);
 					return [500, { error: "Internal Server Error", details: "Transaction failed and was rolled back" }];
+				} finally {
+					pgClient.release();
 				}
 
 			} catch (error) {
