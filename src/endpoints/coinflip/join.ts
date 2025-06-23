@@ -88,24 +88,23 @@ export default {
 				return [400, { error: "Failed to join coinflip" }];
 			}
 
-			setTimeout(async () => {
-				console.log("Starting coinflip", coinflip_id);
+			// Immediately trigger the coinflip start without relying on setTimeout.
+			console.log("Starting coinflip", coinflip_id);
 
-				const response = await doSelfHttpRequest(request.server, {
-					method: "POST",
-					url: `/coinflip/start/${coinflip_id}`,
-					body: {
-						coinflip_id,
-					},
-				});
+			const response = await doSelfHttpRequest(request.server, {
+				method: "POST",
+				url: `/coinflip/start/${coinflip_id}`,
+				body: {
+					coinflip_id,
+				},
+			});
 
-				console.log("Coinflip started", coinflip_id, response.body);
+			console.log("Coinflip started", coinflip_id, response.body);
 
-				if (response.statusCode !== 200) {
-					updatedCoinflip.status = "failed";
-					await coinflipManager.completeCoinflip(coinflip_id, updatedCoinflip);
-				}
-			}, 1000 * 1.5);
+			if (response.statusCode !== 200) {
+				updatedCoinflip.status = "failed";
+				await coinflipManager.completeCoinflip(coinflip_id, updatedCoinflip);
+			}
 
 			return [
 				200,

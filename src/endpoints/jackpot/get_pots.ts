@@ -1,10 +1,10 @@
 import { FastifyRequest } from "fastify";
-import { JackpotRedisManager } from "../../service/jackpot-redis";
+import { JackpotRedisManager } from "../../service/jackpot/jackpot-redis";
 import { getRedisConnection } from "../../service/redis";
 
 export default {
 	method: "GET",
-	url: "/jackpot/get-pots",
+	url: "/jackpot/pots",
 	authType: "none",
 	callback: async (request: FastifyRequest) => {
 		const redis = await getRedisConnection();

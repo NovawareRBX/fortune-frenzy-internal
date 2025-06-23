@@ -1,7 +1,7 @@
 import { FastifyRequest } from "fastify";
 import { getRedisConnection } from "../../service/redis";
 import { z } from "zod";
-import { JackpotRedisManager } from "../../service/jackpot-redis";
+import { JackpotRedisManager } from "../../service/jackpot/jackpot-redis";
 
 const startPotParamsSchema = z.object({
     id: z.string(),

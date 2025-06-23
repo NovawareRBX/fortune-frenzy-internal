@@ -1,9 +1,9 @@
 import { FastifyInstance } from "fastify";
 import { RedisClientType } from "redis";
-import { randomJackpotSpin } from "../utilities/secureRandomness";
-import internalRequest from "../utilities/internalRequest";
-import { getPostgresConnection } from "./postgres";
-import getTotalValue from "../utilities/getTotalValue";
+import { randomJackpotSpin } from "../../utilities/secureRandomness";
+import internalRequest from "../../utilities/internalRequest";
+import { getPostgresConnection } from "../postgres";
+import getTotalValue from "../../utilities/getTotalValue";
 
 export interface JackpotData {
 	id: string;
@@ -13,7 +13,6 @@ export interface JackpotData {
 	value_cap: number;
 	joinable: boolean;
 	leaveable: boolean;
-	starting_method: "countdown" | "manual";
 	status: "countdown" | "waiting_for_start" | "in_progress" | "complete";
 	members: {
 		player: { id: string; username: string; display_name: string };
@@ -28,11 +27,14 @@ export interface JackpotData {
 	created_at: number;
 	updated_at: number;
 	transfer_id?: string;
+	is_system_pot?: boolean;
+	auto_start_ts?: number;
+	value_floor?: number;
+	max_players?: number;
 }
 
 const JACKPOT_EXPIRY = 3600;
 const LOCK_EXPIRY = 10;
-// Central account that temporarily owns items during countdown
 const HOLDING_ACCOUNT_ID = "1";
 
 export class JackpotRedisManager {
@@ -46,10 +48,6 @@ export class JackpotRedisManager {
 
 	private getKey(type: string, id: string): string {
 		return `jackpot:${type}:${id}`;
-	}
-
-	private async delay(ms: number): Promise<void> {
-		return new Promise((resolve) => setTimeout(resolve, ms));
 	}
 
 	async createJackpot(data: JackpotData): Promise<boolean> {
@@ -66,7 +64,7 @@ export class JackpotRedisManager {
 			.set(creatorKey, data.id, { NX: true, EX: JACKPOT_EXPIRY })
 			.exec();
 
-		if (!result || result.some((reply) => !reply)) {
+		if (!result || result.some((reply) => reply === null)) {
 			console.warn(
 				`[JackpotRedis] createJackpot failed for jackpot ${data.id}. Redis transaction result: ${JSON.stringify(
 					result,
@@ -79,14 +77,8 @@ export class JackpotRedisManager {
 		return true;
 	}
 
-	/**
-	 * Safely add a new member to a jackpot using optimistic locking (WATCH/MULTI).
-	 * The updated jackpot state is derived **inside** the critical section so that
-	 * concurrent join requests are merged instead of overwriting each other.
-	 */
 	async joinJackpot(jackpotId: string, userId: number, newMember: JackpotData["members"][number]): Promise<boolean> {
 		const MAX_RETRIES = 3;
-		const RETRY_DELAY_MS = 100;
 
 		const gameKey = this.getKey("game", jackpotId);
 		const userKey = this.getKey("user", userId.toString());
@@ -97,7 +89,7 @@ export class JackpotRedisManager {
 
 				const currentGameRaw = await this.redis.get(gameKey);
 				if (!currentGameRaw) {
-					console.warn(
+					console.debug(
 						`[JackpotRedis] joinJackpot failed: jackpot ${jackpotId} not found or expired (attempt ${
 							attempt + 1
 						})`,
@@ -110,9 +102,10 @@ export class JackpotRedisManager {
 
 				if (
 					(current.starting_at !== -1 && current.starting_at <= Math.floor(Date.now() / 1000)) ||
-					!current.joinable
+					!current.joinable ||
+					(current.max_players !== undefined && current.members.length >= current.max_players)
 				) {
-					console.warn(
+					console.debug(
 						`[JackpotRedis] joinJackpot failed: jackpot ${jackpotId} already started or locked (attempt ${
 							attempt + 1
 						})`,
@@ -121,20 +114,32 @@ export class JackpotRedisManager {
 					return false;
 				}
 
-				const userAlreadyPlaying = await this.redis.exists(userKey);
-				if (userAlreadyPlaying) {
-					console.warn(
-						`[JackpotRedis] joinJackpot failed: user ${userId} is already in another jackpot (attempt ${
-							attempt + 1
-						})`,
-					);
-					await this.redis.unwatch();
-					return false;
+				const userAlreadyPlayingRaw = await this.redis.get(userKey);
+				if (userAlreadyPlayingRaw) {
+					const otherGameRaw = await this.redis.get(this.getKey("game", userAlreadyPlayingRaw));
+					if (!otherGameRaw) {
+						await this.redis.del(userKey);
+					} else {
+						const otherGame: JackpotData = JSON.parse(otherGameRaw);
+						if (otherGame.status !== "complete") {
+							console.debug(
+								`[JackpotRedis] joinJackpot failed: user ${userId} is already in another active jackpot ${userAlreadyPlayingRaw} (attempt ${
+									attempt + 1
+								})`,
+							);
+							await this.redis.unwatch();
+							return false;
+						} else {
+							await this.redis.del(userKey);
+						}
+					}
 				}
 
+				const isFirstMemberSystemPot = current.is_system_pot === true && current.members.length === 0;
 				const updated: JackpotData = {
 					...current,
 					members: [...current.members, newMember],
+					...(isFirstMemberSystemPot ? { auto_start_ts: Math.floor(Date.now() / 1000) + 120 } : {}),
 					updated_at: Date.now(),
 				};
 
@@ -149,7 +154,6 @@ export class JackpotRedisManager {
 				}
 
 				console.debug(`Join attempt ${attempt + 1} for jackpot ${jackpotId} conflicted, retrying...`);
-				await this.delay(RETRY_DELAY_MS);
 			} catch (err) {
 				await this.redis.unwatch();
 				throw err;
@@ -213,7 +217,6 @@ export class JackpotRedisManager {
 					}
 
 					if (pairs.length > 0) {
-						// Build a parameterised list for Postgres ($1, $2 ...)
 						const pgParams: any[] = [];
 						const placeholders: string[] = [];
 						pairs.forEach(([uaid, ownerId], idx) => {
@@ -227,7 +230,9 @@ export class JackpotRedisManager {
 							owner_id: string;
 							user_asset_id: string;
 						}>(
-							`SELECT owner_id, user_asset_id FROM item_copies WHERE (user_asset_id, owner_id) IN (${placeholders.join(", ")})`,
+							`SELECT owner_id, user_asset_id FROM item_copies WHERE (user_asset_id, owner_id) IN (${placeholders.join(
+								", ",
+							)})`,
 							pgParams,
 						);
 
@@ -264,7 +269,6 @@ export class JackpotRedisManager {
 			}
 
 			if (membersChanged) {
-				// Update jackpot state with adjusted members before proceeding
 				current.members = adjustedMembers;
 				current.updated_at = Date.now();
 				await this.redis.set(this.getKey("game", id), JSON.stringify(current), {
@@ -276,14 +280,6 @@ export class JackpotRedisManager {
 			if (current.members.length === 0) {
 				console.warn(
 					`[JackpotRedis] startJackpot aborted: jackpot ${id} has no valid members after verification`,
-				);
-				await this.redis.del(lockKey);
-				return false;
-			}
-
-			if (current.members.length === 1) {
-				console.warn(
-					`[JackpotRedis] startJackpot aborted: jackpot ${id} has only one valid member after verification`,
 				);
 				await this.redis.del(lockKey);
 				return false;
@@ -338,14 +334,8 @@ export class JackpotRedisManager {
 				return false;
 			}
 
-			current.transfer_id = body.transfer_id; // retain for auditing
+			current.transfer_id = body.transfer_id;
 			await this.redis.set(gameKey, JSON.stringify(current), { XX: true, EX: JACKPOT_EXPIRY });
-
-			setTimeout(() => {
-				this.finalizeJackpot(id).catch((err) =>
-					console.error(`[JackpotRedis] finalizeJackpot error for ${id}:`, err),
-				);
-			}, COUNTDOWN * 1000);
 
 			return true;
 		} catch (err) {
@@ -355,7 +345,7 @@ export class JackpotRedisManager {
 		}
 	}
 
-	private async finalizeJackpot(id: string): Promise<void> {
+	async finalizeJackpot(id: string): Promise<void> {
 		const gameKey = this.getKey("game", id);
 		const currentRaw = await this.redis.get(gameKey);
 		if (!currentRaw) {
@@ -434,7 +424,6 @@ export class JackpotRedisManager {
 		}
 
 		const { transfer_id: winnerTransferId } = JSON.parse(createTransferResp.body);
-
 		const winnerConfirmResp = await internalRequest(this.server, {
 			method: "POST",
 			url: `/items/item-transfer/${winnerTransferId}/confirm`,
@@ -464,12 +453,5 @@ export class JackpotRedisManager {
 			console.error(`[JackpotRedis] finalizeJackpot failed to commit results for jackpot ${id}`);
 			return;
 		}
-
-		setTimeout(() => {
-			Promise.all([
-				this.redis.sRem("jackpots:global", id),
-				this.redis.sRem(this.getKey("server", current.server_id), id),
-			]).catch((err) => console.error(`[JackpotRedis] Deferred cleanup failed for jackpot ${id}:`, err));
-		}, 30000);
 	}
 }

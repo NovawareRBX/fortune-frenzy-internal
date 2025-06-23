@@ -1,7 +1,7 @@
 import { FastifyRequest } from "fastify";
 import { getPostgresConnection } from "../../service/postgres";
 import { getRedisConnection } from "../../service/redis";
-import { randomBytes } from "crypto";
+import crypto from "crypto";
 import getItemString from "../../utilities/getItemString";
 import getUserInfo from "../../utilities/getUserInfo";
 import { CoinflipRedisManager } from "../../service/coinflip-redis";
@@ -65,7 +65,7 @@ export default {
 
 		const redis = await getRedisConnection();
 		const connection = await getPostgresConnection();
-		if (!connection || !redis) return [500, { error: "failed to connect to the database" }];
+		if (!connection || !redis) return [500, { error: "Failed to connect to the database" }];
 
 		const coinflipManager = new CoinflipRedisManager(redis, request.server);
 
@@ -74,11 +74,11 @@ export default {
 				"SELECT user_asset_id FROM item_copies WHERE user_asset_id = ANY($1::text[]) AND owner_id = $2",
 				[items, user_id],
 			);
-			if (confirmed_items.length !== items.length) return [400, { error: "invalid items" }];
+			if (confirmed_items.length !== items.length) return [400, { error: "Invalid items" }];
 
 			const [user_info] = await getUserInfo(connection, [user_id.toString()]);
 			const item_ids_string = await getItemString(connection, items);
-			const coinflip_id = randomBytes(20).toString("base64").replace(/[+/=]/g, "").substring(0, 20);
+			const coinflip_id = crypto.randomUUID();
 
 			const coinflip_data: CoinflipData = {
 				id: coinflip_id,
@@ -96,7 +96,7 @@ export default {
 
 			const success = await coinflipManager.createCoinflip(coinflip_data);
 			if (!success) {
-				return [500, { error: "failed to create coinflip" }];
+				return [500, { error: "Failed to create coinflip" }];
 			}
 
 			return [
@@ -107,7 +107,7 @@ export default {
 				},
 			];
 		} catch (error) {
-			return [500, { error: "failed to create coinflip" }];
+			return [500, { error: "Failed to create coinflip" }];
 		} finally {
 			connection.release();
 		}

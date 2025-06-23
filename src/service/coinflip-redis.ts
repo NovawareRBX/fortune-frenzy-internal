@@ -2,6 +2,8 @@ import { RedisClientType } from "redis";
 import { FastifyInstance } from "fastify";
 import { CoinflipData } from "../endpoints/coinflip/create";
 import doSelfHttpRequest from "../utilities/internalRequest";
+import { getClickhouseConnection } from "./clickhouse";
+import getTotalValue from "../utilities/getTotalValue";
 
 const COINFLIP_EXPIRY = 3600;
 const LOCK_EXPIRY = 30;
@@ -19,8 +21,11 @@ export class CoinflipRedisManager {
 		return `coinflip:${type}:${id}`;
 	}
 
-	private async delay(ms: number): Promise<void> {
-		return new Promise((resolve) => setTimeout(resolve, ms));
+	/**
+	 * No-op delay kept for interface compatibility – one-shot timers are disallowed.
+	 */
+	private async delay(): Promise<void> {
+		return Promise.resolve();
 	}
 
 	private async hasActiveCoinflip(userId: string): Promise<boolean> {
@@ -73,12 +78,37 @@ export class CoinflipRedisManager {
 			return false;
 		}
 
+		const clickhouse = await getClickhouseConnection();
+		try {
+			clickhouse.insert({
+				table: "coinflip_events",
+				format: "JSONEachRow",
+				values: [
+					{
+						event_id: crypto.randomUUID(),
+						coinflip_id: data.id,
+						user_id: data.player1.id,
+						event_type: "created",
+						created_at: new Date().toISOString().slice(0, 19).replace("T", " "),
+						data: {
+							player1_items: data.player1_items,
+							player2_items: [],
+							player1_coin: data.player1_coin,
+							player1_value: getTotalValue(data.player1_items),
+							player2_value: 0,
+							server_id: data.server_id,
+							winner: data.winning_coin,
+						},
+					},
+				],
+			});
+		} catch (_) {}
+
 		return true;
 	}
 
 	async joinCoinflip(coinflipId: string, userId: number, updatedData: CoinflipData): Promise<boolean> {
 		const MAX_RETRIES = 3;
-		const RETRY_DELAY = 100;
 
 		const playerIdStr = userId.toString();
 		const gameKey = this.getKey("game", coinflipId);
@@ -111,13 +141,36 @@ export class CoinflipRedisManager {
 					.exec();
 
 				if (result && !result.some((reply) => !reply)) {
+					try {
+						const clickhouse = await getClickhouseConnection();
+						clickhouse.insert({
+							table: "coinflip_events",
+							format: "JSONEachRow",
+							values: [
+								{
+									event_id: crypto.randomUUID(),
+									coinflip_id: coinflipId,
+									user_id: userId,
+									event_type: "joined",
+									created_at: new Date().toISOString().slice(0, 19).replace("T", " "),
+									data: {
+										player1_items: current.player1_items,
+										player2_items: updatedData.player2_items,
+										player1_coin: current.player1_coin,
+										player1_value: getTotalValue(current.player1_items),
+										player2_value: getTotalValue(updatedData.player2_items || []),
+										server_id: current.server_id,
+									},
+								},
+							],
+						});
+					} catch (_) {}
+
 					return true;
 				}
 
-				console.log(
-					`Coinflip join attempt ${attempt + 1} failed due to concurrent modification, retrying...`,
-				);
-				await this.delay(RETRY_DELAY);
+				console.log(`Coinflip join attempt ${attempt + 1} failed due to concurrent modification, retrying...`);
+				await this.delay();
 			} catch (error) {
 				await this.redis.unwatch();
 				throw error;
@@ -157,6 +210,32 @@ export class CoinflipRedisManager {
 			multi.del([player2Key]);
 		}
 
+		try {
+			const clickhouse = await getClickhouseConnection();
+			clickhouse.insert({
+				table: "coinflip_events",
+				format: "JSONEachRow",
+				values: [
+					{
+						event_id: crypto.randomUUID(),
+						coinflip_id: id,
+						user_id: data.player1.id,
+						event_type: "cancelled",
+						created_at: new Date().toISOString().slice(0, 19).replace("T", " "),
+						data: {
+							player1_items: data.player1_items,
+							player2_items: data.player2_items,
+							player1_coin: data.player1_coin,
+							player1_value: getTotalValue(data.player1_items),
+							player2_value: getTotalValue(data.player2_items || []),
+							server_id: data.server_id,
+							winner: data.winning_coin,
+						},
+					},
+				],
+			});
+		} catch (_) {}
+
 		const result = await multi.exec();
 		return result !== null;
 	}
@@ -178,13 +257,38 @@ export class CoinflipRedisManager {
 			return false;
 		}
 
-		setTimeout(async () => {
-			try {
-				await this.redis.sRem("coinflips:global", id);
-			} catch (error) {
-				console.error(`Failed to remove coinflip ${id} from global set:`, error);
-			}
-		}, 30000);
+		// Immediate global-set cleanup; periodic schedulers will also ensure consistency.
+		try {
+			await this.redis.sRem("coinflips:global", id);
+		} catch (error) {
+			console.error(`Failed to remove coinflip ${id} from global set:`, error);
+		}
+
+		try {
+			const clickhouse = await getClickhouseConnection();
+			clickhouse.insert({
+				table: "coinflip_events",
+				format: "JSONEachRow",
+				values: [
+					{
+						event_id: crypto.randomUUID(),
+						coinflip_id: id,
+						user_id: finalData.player1.id,
+						event_type: "completed",
+						created_at: new Date().toISOString().slice(0, 19).replace("T", " "),
+						data: {
+							player1_items: finalData.player1_items,
+							player2_items: finalData.player2_items,
+							player1_coin: finalData.player1_coin,
+							player1_value: getTotalValue(finalData.player1_items),
+							player2_value: getTotalValue(finalData.player2_items || []),
+							server_id: finalData.server_id,
+							winner: finalData.winning_coin,
+						},
+					},
+				],
+			});
+		} catch (_) {}
 
 		return true;
 	}

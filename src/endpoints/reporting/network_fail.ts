@@ -1,7 +1,5 @@
 import { FastifyRequest } from "fastify";
-import { getMariaConnection } from "../../service/mariadb";
-import { ItemListing } from "../../types/Endpoints";
-import smartQuery from "../../utilities/smartQuery";
+import { getPostgresConnection } from "../../service/postgres";
 import { z } from "zod";
 
 const networkFailSchema = z.object({
@@ -39,7 +37,7 @@ export default {
 			};
 		}>,
 	): Promise<[number, any]> {
-		const connection = await getMariaConnection();
+		const connection = await getPostgresConnection();
 		if (!connection) {
 			return [500, { error: "Failed to connect to the database" }];
 		}
@@ -51,9 +49,8 @@ export default {
 			}
 			const body = parseResult.data;
 			// log into the database
-			const [result] = await smartQuery(
-				connection,
-				"INSERT INTO roblox_network_logs (error_type, nwi_name, nwi_globalName, nwi_eventType, incorrectArg_index, incorrectArg_value, playerId) VALUES (?, ?, ?, ?, ?, ?, ?)",
+			const result = await connection.query(
+				"INSERT INTO roblox_network_logs (error_type, nwi_name, nwi_globalName, nwi_eventType, incorrectArg_index, incorrectArg_value, playerId) VALUES ($1, $2, $3, $4, $5, $6, $7)",
 				[
 					body.network,
 					body.networkData.name,
@@ -65,11 +62,11 @@ export default {
 				],
 			);
 
-			if (result.affectedRows === 0) {
+			if (result.rowCount === 0) {
 				return [500, { error: "Failed to log into the database" }];
 			}
 
-			return [200, { status: "OK", id: result.insertId }];
+			return [200, { status: "OK", id: result.rows[0].id }];
 		} finally {
 			await connection.release();
 		}

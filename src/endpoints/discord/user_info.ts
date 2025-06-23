@@ -1,8 +1,5 @@
 import { FastifyRequest } from "fastify";
-import { packeter } from "../../utilities/packeter";
-import { getMariaConnection } from "../../service/mariadb";
 import { getRedisConnection } from "../../service/redis";
-import smartQuery from "../../utilities/smartQuery";
 import { z } from "zod";
 
 let USER_FLAGS = [

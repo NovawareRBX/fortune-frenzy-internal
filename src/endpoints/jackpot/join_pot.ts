@@ -1,7 +1,7 @@
 import { FastifyRequest } from "fastify";
 import { getRedisConnection } from "../../service/redis";
 import { z } from "zod";
-import { JackpotRedisManager } from "../../service/jackpot-redis";
+import { JackpotRedisManager } from "../../service/jackpot/jackpot-redis";
 import { getPostgresConnection } from "../../service/postgres";
 import getUserInfo from "../../utilities/getUserInfo";
 import getItemString from "../../utilities/getItemString";
@@ -73,7 +73,6 @@ export default {
 						response = [400, { error: "User not found" }];
 					} else {
 						const item_ids_string = await getItemString(connection, items);
-
 						const newMember = {
 							player: user_info,
 							total_value: await getTotalValue(item_ids_string),
@@ -82,6 +81,7 @@ export default {
 						} as const;
 
 						const success = await jackpotManager.joinJackpot(id, user_id, newMember);
+
 						response = success
 							? [200, { status: "OK", message: "Joined jackpot" }]
 							: [409, { error: "Failed to join jackpot" }];

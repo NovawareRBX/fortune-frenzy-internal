@@ -99,7 +99,8 @@ const BOT_INFO = [
 	["chewbeccca", 341206540],
 	["bakmamba74", 305088257],
 	["Cherpl", 351675979],
-	["Dylan", 1253223851]
+	["Dylan", 1253223851],
+	["Jaye", 302356939]
 ];
 
 const joinBodySchema = z.object({

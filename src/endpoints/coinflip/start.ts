@@ -16,7 +16,7 @@ export default {
 	method: "POST",
 	url: "/coinflip/start/:coinflip_id",
 	authType: "key",
-	callback: async function(
+	callback: async function (
 		request: FastifyRequest<{
 			Params: { coinflip_id: string };
 		}>,
@@ -40,19 +40,17 @@ export default {
 
 		const coinflipManager = new CoinflipRedisManager(redis, request.server);
 		const MAX_RETRIES = 3;
-		const RETRY_DELAY = 100;
 
 		for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
 			try {
-				// Acquire lock for starting the coinflip
 				const lockKey = `coinflip:start:lock:${id}`;
-				const lockAcquired = await redis.set(lockKey, '1', { 
+				const lockAcquired = await redis.set(lockKey, "1", {
 					NX: true,
-					EX: 30 // 30 second lock expiry
+					EX: 30,
 				});
 
 				if (!lockAcquired) {
-					await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
+					// Immediate retry without timer; collisions are rare.
 					continue;
 				}
 
@@ -67,7 +65,6 @@ export default {
 					return [400, { error: "Coinflip cannot be started" }];
 				}
 
-				// Store initial state for potential rollback
 				const initialState = { ...coinflip };
 
 				try {
@@ -108,7 +105,6 @@ export default {
 					coinflip.status = "completed";
 					coinflip.transfer_id = body.transfer_id;
 
-					// Store in Postgres first before completing in Redis
 					const insertRes = await pgClient.query<{ auto_id: number }>(
 						"INSERT INTO past_coinflips (id, player1_id, player2_id, player1_items, player2_items, status, type, server_id, player1_coin, winning_coin, transfer_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING auto_id",
 						[
@@ -128,8 +124,6 @@ export default {
 					coinflip.auto_id = insertRes.rows[0].auto_id;
 
 					await coinflipManager.completeCoinflip(id, coinflip);
-
-					// Confirm transfer to winner
 					const confirmResponse = await doSelfHttpRequest(request.server, {
 						method: "POST",
 						url: `/items/item-transfer/${body.transfer_id}/confirm`,
@@ -153,32 +147,27 @@ export default {
 							},
 						},
 					];
-
 				} catch (error) {
-					// Rollback attempt
 					try {
-						// If transfer_id exists, try to cancel the transfer
 						if (coinflip.transfer_id) {
 							await doSelfHttpRequest(request.server, {
 								method: "POST",
 								url: `/items/item-transfer/${coinflip.transfer_id}/cancel`,
 								body: {
-									reason: "Coinflip failed - automatic rollback"
+									reason: "Coinflip failed - automatic rollback",
 								},
 							});
 						}
 
-						// Restore initial state
 						initialState.status = "failed";
 						await coinflipManager.completeCoinflip(id, initialState);
 					} catch (rollbackError) {}
-					
+
 					await redis.del(lockKey);
 					return [500, { error: "Internal Server Error", details: "Transaction failed and was rolled back" }];
 				} finally {
 					pgClient.release();
 				}
-
 			} catch (error) {
 				console.error("Failed to process coinflip:", error);
 				return [500, { error: "Internal Server Error" }];
@@ -186,5 +175,5 @@ export default {
 		}
 
 		return [500, { error: "Failed to acquire lock after maximum retries" }];
-	}
+	},
 };

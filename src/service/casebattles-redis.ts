@@ -40,21 +40,22 @@ export interface CaseBattleData {
 	current_spin_data: {
 		current_case_index: number;
 		case_id: string;
-		progress: string; // ie. "1/5"
+		progress: string;
 	};
 	winners_info?: {
 		player_id: string;
 		amount_won: number;
 	}[];
 	status: "waiting_for_players" | "in_progress" | "completed";
+	next_step_at?: number;
 	created_at: number;
 	started_at: number;
 	completed_at: number;
 	updated_at: number;
 }
 
-const CASEBATTLE_EXPIRY = 3600; // 1 hour
-const LOCK_EXPIRY = 10; // 10 seconds, reduced for faster lock release
+const CASEBATTLE_EXPIRY = 3600;
+const LOCK_EXPIRY = 10;
 
 export class CasebattlesRedisManager {
 	private redis: RedisClientType;
@@ -69,10 +70,6 @@ export class CasebattlesRedisManager {
 		return `casebattle:${type}:${id}`;
 	}
 
-	private async delay(ms: number): Promise<void> {
-		return new Promise((resolve) => setTimeout(resolve, ms));
-	}
-
 	private async acquireLock(key: string, expirySeconds: number): Promise<boolean> {
 		try {
 			const res = await this.redis.set(key, "1", { NX: true, EX: expirySeconds });
@@ -85,8 +82,32 @@ export class CasebattlesRedisManager {
 	private async releaseLock(key: string): Promise<void> {
 		try {
 			await this.redis.del(key);
+		} catch {}
+	}
+
+	private async hasActiveCaseBattle(userId: string): Promise<boolean> {
+		const playerKey = this.getKey("player", userId);
+
+		const existingId = await this.redis.get(playerKey);
+		if (!existingId) return false;
+
+		const existingGameRaw = await this.redis.get(this.getKey("game", existingId));
+		if (!existingGameRaw) {
+			await this.redis.del(playerKey);
+			return false;
+		}
+
+		try {
+			const existingGame: CaseBattleData = JSON.parse(existingGameRaw);
+			const inactive = existingGame.status === "completed";
+			if (inactive) {
+				await this.redis.del(playerKey);
+				return false;
+			}
+			return true;
 		} catch {
-			// ignore
+			await this.redis.del(playerKey);
+			return false;
 		}
 	}
 
@@ -95,15 +116,8 @@ export class CasebattlesRedisManager {
 		const casebattleKey = this.getKey("game", data.id);
 		const playerKey = this.getKey("player", data.players[0].id);
 
-		const existingBattle = await this.redis.get(playerKey);
-		if (existingBattle) {
-			const existingGame = await this.redis.get(this.getKey("game", existingBattle));
-			if (existingGame) {
-				const gameData: CaseBattleData = JSON.parse(existingGame);
-				if (gameData.status !== "completed") {
-					return false;
-				}
-			}
+		if (await this.hasActiveCaseBattle(data.players[0].id)) {
+			return false;
 		}
 
 		const result = await this.redis
@@ -112,7 +126,7 @@ export class CasebattlesRedisManager {
 			.set(casebattleKey, JSON.stringify(data), { NX: true, EX: CASEBATTLE_EXPIRY })
 			.sAdd(this.getKey("server", data.server_id), data.id)
 			.sAdd("casebattles:global", data.id)
-			.set(playerKey, data.id, { EX: CASEBATTLE_EXPIRY })
+			.set(playerKey, data.id, { NX: true, EX: CASEBATTLE_EXPIRY })
 			.exec();
 
 		if (!result || result.some((reply) => !reply)) {
@@ -125,9 +139,8 @@ export class CasebattlesRedisManager {
 
 	async joinCaseBattle(casebattleId: string, newPlayer: CaseBattleData["players"][number]): Promise<boolean> {
 		const MAX_RETRIES = 3;
-		const RETRY_DELAY_MS = 100;
-
 		const gameKey = this.getKey("game", casebattleId);
+		const playerKey = this.getKey("player", newPlayer.id);
 
 		for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
 			try {
@@ -140,7 +153,6 @@ export class CasebattlesRedisManager {
 				}
 
 				const current: CaseBattleData = JSON.parse(currentRaw);
-
 				if (current.status !== "waiting_for_players") {
 					await this.redis.unwatch();
 					return false;
@@ -179,17 +191,15 @@ export class CasebattlesRedisManager {
 				const execRes = await this.redis
 					.multi()
 					.set(gameKey, JSON.stringify(updated), { XX: true, EX: CASEBATTLE_EXPIRY })
+					.set(playerKey, casebattleId, { NX: true, EX: CASEBATTLE_EXPIRY })
 					.exec();
 
 				if (execRes && !execRes.some((r) => !r)) {
 					return true;
 				}
-
-				await this.delay(RETRY_DELAY_MS);
 			} catch (err) {
 				await this.redis.unwatch();
 				console.error(`Error joining casebattle: ${err}`);
-				await this.delay(RETRY_DELAY_MS);
 			}
 		}
 
@@ -210,20 +220,12 @@ export class CasebattlesRedisManager {
 
 	async cancelCaseBattle(id: string, data: CaseBattleData): Promise<boolean> {
 		const gameKey = this.getKey("game", id);
-		const playerKey = this.getKey("player", data.players[0].id);
 		const serverKey = this.getKey("server", data.server_id);
 
-		const multi = this.redis
-			.multi()
-			.del([gameKey])
-			.del([playerKey])
-			.sRem(serverKey, id)
-			.sRem("casebattles:global", id);
+		const multi = this.redis.multi().del([gameKey]).sRem(serverKey, id).sRem("casebattles:global", id);
 
-		if (data.players.length > 1) {
-			data.players.forEach((player) => {
-				this.redis.del(this.getKey("player", player.id));
-			});
+		for (const player of data.players) {
+			multi.del([this.getKey("player", player.id)]);
 		}
 
 		const result = await multi.exec();
@@ -298,13 +300,8 @@ export class CasebattlesRedisManager {
 	}
 
 	async startCaseBattle(id: string): Promise<boolean> {
-		// Use a short-lived lock to ensure this method only runs once per battle.
-		// The full execution of a battle can take a long time, but we only need
-		// mutual exclusion for the critical section that flips the state from
-		// "waiting_for_players" to "in_progress". Once that is done any later
-		// callers will see the updated status and bail out immediately.
 		const lockKey = this.getKey("start-lock", id);
-		const gotLock = await this.acquireLock(lockKey, 30); // 30 seconds should be enough for the critical section
+		const gotLock = await this.acquireLock(lockKey, 30);
 		if (!gotLock) return false;
 
 		try {
@@ -315,121 +312,142 @@ export class CasebattlesRedisManager {
 				return false;
 			}
 
-			let current: CaseBattleData = JSON.parse(currentGame);
+			const current: CaseBattleData = JSON.parse(currentGame);
 			if (current.status !== "waiting_for_players") {
 				await this.releaseLock(lockKey);
 				return false;
 			}
 
-			await this.redis.set(
-				gameKey,
-				JSON.stringify({ ...current, status: "in_progress", started_at: Date.now(), updated_at: Date.now() }),
-				{
-					XX: true,
-					EX: CASEBATTLE_EXPIRY,
-				},
-			);
+			const nowMs = Date.now();
+			const updated: CaseBattleData = {
+				...current,
+				status: "in_progress",
+				started_at: nowMs,
+				updated_at: nowMs,
+				next_step_at: nowMs,
+			};
 
-			// Release the lock early so that other operations are unblocked while the
-			// lengthy battle simulation runs. Subsequent callers will see the status
-			// has changed to "in_progress" and will therefore return early.
-			await this.releaseLock(lockKey);
-
-			for (const [index, caseId] of current.cases.entries()) {
-				const [caseData] = await this.getCases(caseId);
-				if (!caseData) return false;
-				const currentGameData = await this.redis.get(gameKey);
-				if (!currentGameData) return false;
-				current = JSON.parse(currentGameData);
-
-				for (const player of current.players) {
-					const { result, hash, roll } = randomCaseBattleSpin(
-						caseData.items,
-						player.client_seed,
-						current.server_seed,
-						index,
-					);
-
-					if (!current.player_pulls[player.id])
-						current.player_pulls[player.id] = { items: [], total_value: 0 };
-					current.player_pulls[player.id].items.push({
-						id: result.id,
-						roll: roll,
-						hash: hash,
-						case_index: index,
-						value: result.value,
-					});
-					current.player_pulls[player.id].total_value += result.value;
-				}
-
-				current.current_spin_data.current_case_index = index;
-				current.current_spin_data.case_id = caseId;
-				current.current_spin_data.progress = `${index + 1}/${current.cases.length}`;
-				await this.redis.set(gameKey, JSON.stringify({ ...current, updated_at: Date.now() }), {
-					XX: true,
-					EX: CASEBATTLE_EXPIRY,
-				});
-
-				await this.delay((current.fast_mode ? 3 : 5) * 1000 + 300);
-			}
-
-			let winningPlayers: { player_id: string; amount_won: number }[] = [];
-			if (current.mode === "Group") {
-				winningPlayers = groupModeHandler(current);
-			} else if (current.mode === "Randomized") {
-				winningPlayers = randomizerModeHandler(current);
-			} else if (current.mode === "Showdown") {
-				winningPlayers = showdownModeHandler(current);
-			} else if (current.mode === "Standard") {
-				winningPlayers = standardModeHandler(current);
-			}
-
-			// Update each player's total_value to reflect their final winnings (amount won or 0 if they lost)
-			const winningsMap: Record<string, number> = winningPlayers.reduce((acc, { player_id, amount_won }) => {
-				acc[player_id] = amount_won;
-				return acc;
-			}, {} as Record<string, number>);
-			for (const player of current.players) {
-				if (current.player_pulls[player.id]) {
-					current.player_pulls[player.id].total_value = winningsMap[player.id] ?? 0;
-				}
-			}
-
-			await this.redis.set(
-				gameKey,
-				JSON.stringify({
-					...current,
-					winners_info: winningPlayers,
-					completed_at: Date.now(),
-					status: "completed",
-					updated_at: Date.now(),
-					current_spin_data: {
-						...current.current_spin_data,
-						current_case_index: current.cases.length + 1,
-					},
-				}),
-				{
-					XX: true,
-					EX: 10,
-				},
-			);
-
-			const pgClient = await getPostgresConnection();
-			const values = winningPlayers
-				.filter((player) => !player.player_id.startsWith("bot_"))
-				.map((player) => [player.player_id, player.amount_won]);
-			if (values.length > 0) {
-				const placeholders = values.map((_, idx) => `($${idx * 2 + 1}, $${idx * 2 + 2}, 'pending')`).join(", ");
-				await pgClient.query(
-					`INSERT INTO external_cash_change_requests (user_id, amount, status) VALUES ${placeholders}`,
-					values.flat(),
-				);
-			}
-			await pgClient.release();
-
+			await this.redis.set(gameKey, JSON.stringify(updated), { XX: true, EX: CASEBATTLE_EXPIRY });
 			return true;
 		} finally {
 			await this.releaseLock(lockKey);
 		}
+	}
+
+	async stepCaseBattle(id: string): Promise<boolean> {
+		const lockKey = this.getKey("step-lock", id);
+		const gotLock = await this.acquireLock(lockKey, 30);
+		if (!gotLock) return false;
+
+		try {
+			const gameKey = this.getKey("game", id);
+			const battleRaw = await this.redis.get(gameKey);
+			if (!battleRaw) {
+				await this.releaseLock(lockKey);
+				return false;
+			}
+
+			let battle: CaseBattleData = JSON.parse(battleRaw);
+			if (battle.status !== "in_progress") {
+				await this.releaseLock(lockKey);
+				return false;
+			}
+
+			const nowMs = Date.now();
+
+			if (battle.next_step_at !== undefined && nowMs < battle.next_step_at) {
+				await this.releaseLock(lockKey);
+				return false;
+			}
+
+			const nextIndex = (battle.current_spin_data?.current_case_index ?? -1) + 1;
+			if (nextIndex >= battle.cases.length) {
+				await this.finalizeBattle(battle, gameKey);
+				return true;
+			}
+
+			const caseId = battle.cases[nextIndex];
+			const [caseData] = await this.getCases(caseId);
+			if (!caseData) {
+				await this.releaseLock(lockKey);
+				return false;
+			}
+
+			for (const player of battle.players) {
+				const { result, hash, roll } = randomCaseBattleSpin(
+					caseData.items,
+					player.client_seed,
+					battle.server_seed,
+					nextIndex,
+				);
+
+				if (!battle.player_pulls[player.id]) battle.player_pulls[player.id] = { items: [], total_value: 0 };
+				battle.player_pulls[player.id].items.push({
+					id: result.id,
+					roll,
+					hash,
+					case_index: nextIndex,
+					value: result.value,
+				});
+				battle.player_pulls[player.id].total_value += result.value;
+			}
+
+			battle.current_spin_data.current_case_index = nextIndex;
+			battle.current_spin_data.case_id = caseId;
+			battle.current_spin_data.progress = `${nextIndex + 1}/${battle.cases.length}`;
+			battle.next_step_at = nowMs + (battle.fast_mode ? 4 : 6) * 1000;
+			battle.updated_at = Date.now();
+
+			await this.redis.set(gameKey, JSON.stringify(battle), { XX: true, EX: CASEBATTLE_EXPIRY });
+			return true;
+		} finally {
+			await this.releaseLock(lockKey);
+		}
+	}
+
+	private async finalizeBattle(battle: CaseBattleData, gameKey: string): Promise<void> {
+		if (battle.status === "completed") return;
+
+		let winningPlayers: { player_id: string; amount_won: number }[] = [];
+		if (battle.mode === "Group") {
+			winningPlayers = groupModeHandler(battle);
+		} else if (battle.mode === "Randomized") {
+			winningPlayers = randomizerModeHandler(battle);
+		} else if (battle.mode === "Showdown") {
+			winningPlayers = showdownModeHandler(battle);
+		} else if (battle.mode === "Standard") {
+			winningPlayers = standardModeHandler(battle);
+		}
+
+		const winningsMap: Record<string, number> = winningPlayers.reduce((acc, { player_id, amount_won }) => {
+			acc[player_id] = amount_won;
+			return acc;
+		}, {} as Record<string, number>);
+		for (const player of battle.players) {
+			if (battle.player_pulls[player.id]) {
+				battle.player_pulls[player.id].total_value = winningsMap[player.id] ?? 0;
+			}
+		}
+
+		battle.winners_info = winningPlayers;
+		battle.completed_at = Date.now();
+		battle.status = "completed";
+		battle.updated_at = Date.now();
+		battle.current_spin_data.current_case_index = battle.cases.length + 1;
+
+		await this.redis.set(gameKey, JSON.stringify(battle), { XX: true, EX: 10 });
+
+		const pgClient = await getPostgresConnection();
+		const values = winningPlayers
+			.filter((p) => !p.player_id.startsWith("bot_"))
+			.map((p) => [p.player_id, p.amount_won]);
+		if (values.length) {
+			const placeholders = values.map((_, idx) => `($${idx * 2 + 1}, $${idx * 2 + 2}, 'pending')`).join(", ");
+			await pgClient.query(
+				`INSERT INTO external_cash_change_requests (user_id, amount, status) VALUES ${placeholders}`,
+				values.flat(),
+			);
+		}
+		await pgClient.release();
 	}
 }

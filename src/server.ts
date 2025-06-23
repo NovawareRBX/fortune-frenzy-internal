@@ -1,5 +1,4 @@
 import Fastify from "fastify";
-import fastifyCompress from "@fastify/compress";
 import fastifyCors from "@fastify/cors";
 import dotenv from "dotenv";
 import cluster from "cluster";
@@ -10,6 +9,9 @@ dotenv.config();
 
 import { metricsPlugin, requestCounter, rpsCounter } from "./middleware/metrics";
 import { registerAllRoutes } from "./utilities/routeHandler";
+import ensureSystemJackpots from "./service/jackpot/system-jackpots";
+import runJackpotScheduler from "./service/jackpot/jackpot-scheduler";
+import runCaseBattleScheduler from "./service/casebattles-scheduler";
 
 declare module "fastify" {
 	interface FastifyRequest {
@@ -44,8 +46,6 @@ if (cluster.isPrimary) {
 			});
 
 			server.addHook("onRequest", async (request: FastifyRequest, reply: FastifyReply) => {
-				if (request.url === "/metrics") return;
-				console.log(`[Request]: ${request.method} ${request.url}`);
 				request.startTime = process.hrtime();
 			});
 
@@ -61,6 +61,12 @@ if (cluster.isPrimary) {
 
 			await server.register(metricsPlugin);
 			await registerAllRoutes(server);
+
+			await ensureSystemJackpots(server);
+			setInterval(() => ensureSystemJackpots(server).catch(() => {}), 30_000);
+			setInterval(() => runJackpotScheduler(server).catch(() => {}), 1_000);
+			setInterval(() => runCaseBattleScheduler(server).catch(() => {}), 1_000);
+
 			await server.listen({ port: 3000, host: "0.0.0.0" });
 
 			console.log(`Worker ${process.pid} is running on port 3000`);

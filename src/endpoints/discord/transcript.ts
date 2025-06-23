@@ -1,7 +1,5 @@
 import { FastifyRequest } from "fastify";
 import { packeter } from "../../utilities/packeter";
-import { getMariaConnection } from "../../service/mariadb";
-import smartQuery from "../../utilities/smartQuery";
 import { z } from "zod";
 
 const transcriptParamsSchema = z.object({
@@ -17,23 +15,25 @@ export default {
 			Params: { transcript_id: string };
 		}>,
 	): Promise<[number, any]> {
-		const paramsParse = transcriptParamsSchema.safeParse(request.params);
-		if (!paramsParse.success) {
-			return [400, { error: "Invalid request", errors: paramsParse.error.flatten() }];
-		}
-		const { transcript_id } = paramsParse.data;
+		return [404, { error: "Not implemented" }];
 
-		const maria = await getMariaConnection("NovawareDiscord");
-		const transcript = await smartQuery(maria, "SELECT * FROM ticket_transcripts WHERE transcript_id = ?", [
-			transcript_id,
-		]);
+		// const paramsParse = transcriptParamsSchema.safeParse(request.params);
+		// if (!paramsParse.success) {
+		// 	return [400, { error: "Invalid request", errors: paramsParse.error.flatten() }];
+		// }
+		// const { transcript_id } = paramsParse.data;
 
-		if (transcript.length === 0) {
-			await maria.release();
-			return [404, { error: "Transcript not found" }];
-		}
+		// const maria = await getMariaConnection("NovawareDiscord");
+		// const transcript = await smartQuery(maria, "SELECT * FROM ticket_transcripts WHERE transcript_id = ?", [
+		// 	transcript_id,
+		// ]);
 
-		maria.release()
-		return [200, transcript[0]];
+		// if (transcript.length === 0) {
+		// 	await maria.release();
+		// 	return [404, { error: "Transcript not found" }];
+		// }
+
+		// maria.release()
+		// return [200, transcript[0]];
 	}
 };
