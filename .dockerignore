@@ -1,2 +1,14 @@
 node_modules
-dist
+npm-debug.log
+*.log
+*.tsbuildinfo
+.DS_Store
+
+.git
+.gitignore
+.vscode
+.idea
+
+item-range-svc/target
+item-range-svc/.env
+item-range-svc/.DS_Store

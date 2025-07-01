@@ -20,39 +20,35 @@ export default {
 		request: FastifyRequest<{ Params: { uaid: string }; Body: { buyer_id?: string } }>,
 	): Promise<[number, any]> {
 		const connection = await getPostgresConnection();
-		if (!connection) {
-			return [500, { error: "Failed to connect to the database" }];
-		}
+		if (!connection) return [500, { error: "Failed to connect to the database" }];
 
 		try {
 			const paramsParse = buyParamsSchema.safeParse(request.params);
 			const bodyParse = buyBodySchema.safeParse(request.body);
-			if (!paramsParse.success || !bodyParse.success) {
-				return [400, { error: "Invalid request", errors: {
-					params: !paramsParse.success ? paramsParse.error.flatten() : undefined,
-					body: !bodyParse.success ? bodyParse.error.flatten() : undefined,
-				}}];
-			}
+			if (!paramsParse.success || !bodyParse.success)
+				return [
+					400,
+					{
+						error: "Invalid request",
+						errors: {
+							params: !paramsParse.success ? paramsParse.error.flatten() : undefined,
+							body: !bodyParse.success ? bodyParse.error.flatten() : undefined,
+						},
+					},
+				];
 
 			const { uaid } = paramsParse.data;
 			const buyerId = Number(bodyParse.data.buyer_id);
 
-			await connection.query('BEGIN');
-			const { rows: listings } = await connection.query<ItemListing>(
-				"SELECT * FROM item_listings WHERE user_asset_id = $1 FOR UPDATE",
+			const { rows: listingsPre } = await connection.query<ItemListing>(
+				"SELECT * FROM item_listings WHERE user_asset_id = $1",
 				[uaid],
 			);
-			const listing = listings[0];
+			const listing = listingsPre[0];
 
-			if (!listing) {
-				await connection.query('ROLLBACK');
-				return [404, { error: "Listing not found" }];
-			}
-
-			if (listing.expires_at && new Date(listing.expires_at) < new Date()) {
-				await connection.query('ROLLBACK');
+			if (!listing) return [404, { error: "Listing not found" }];
+			if (listing.expires_at && new Date(listing.expires_at) < new Date())
 				return [400, { error: "Listing has expired" }];
-			}
 
 			const createTransferResp = await doSelfHttpRequest(request.server, {
 				method: "POST",
@@ -65,11 +61,7 @@ export default {
 				],
 			});
 
-			if (createTransferResp.statusCode !== 200) {
-				await connection.query('ROLLBACK');
-				return [500, { error: "Failed to initiate item transfer" }];
-			}
-
+			if (createTransferResp.statusCode !== 200) return [500, { error: "Failed to initiate item transfer" }];
 			const { transfer_id } = JSON.parse(createTransferResp.body);
 
 			const confirmTransferResp = await doSelfHttpRequest(request.server, {
@@ -79,24 +71,25 @@ export default {
 			});
 
 			if (confirmTransferResp.statusCode !== 200) {
-				await connection.query('ROLLBACK');
-				if (confirmTransferResp.statusCode === 403) {
-					return [400, { error: "Item owner has changed" }];
-				}
+				if (confirmTransferResp.statusCode === 403) return [400, { error: "Item owner has changed" }];
 				return [500, { error: "Failed to complete item transfer" }];
 			}
 
+			await connection.query("BEGIN");
 			await connection.query("DELETE FROM item_listings WHERE user_asset_id = $1", [uaid]);
+
 			await connection.query(
-				"INSERT INTO external_cash_change_requests (user_id, amount, status) VALUES ($1, $2, 'pending')",
+				"INSERT INTO external_cash_change_requests (user_id, amount, status) VALUES ($1, $2, 'pending') ON CONFLICT DO NOTHING",
 				[listing.seller_id, Number(listing.price) * 0.7],
 			);
 
-			await connection.query('COMMIT');
+			await connection.query("COMMIT");
 			return [200, { success: true }];
-		} catch (error) {
-			await connection.query('ROLLBACK');
-			return [500, { status: "ERROR" }];
+		} catch (error: any) {
+			await connection.query("ROLLBACK");
+			if (error.code === "55P03")
+				return [409, { error: "Listing is currently being purchased by another process" }];
+			return [500, { error: "Unexpected server error" }];
 		} finally {
 			connection.release();
 		}

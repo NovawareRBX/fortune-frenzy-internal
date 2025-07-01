@@ -1,0 +1,19 @@
+[package]
+name = "item-range-svc"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+axum = "0.7.5"
+serde = { version = "1.0.203", features = ["derive"] }
+serde_json = "1.0.117"
+tokio = { version = "1.37.0", features = ["full"] }
+tokio-postgres = "0.7.10"
+deadpool-postgres = { version = "0.12.0", features = ["serde"] }
+dotenvy = "0.15.7"
+anyhow = "1.0.86"
+once_cell = "1.19.0"
+rust_decimal = { version = "1.35.0", features = ["serde", "db-tokio-postgres"] }
+rayon = "1.10.0"
+tracing = "0.1.40"
+tracing-subscriber = { version = "0.3.18", features = ["env-filter", "fmt"] }

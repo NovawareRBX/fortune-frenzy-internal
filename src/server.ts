@@ -3,6 +3,7 @@ import fastifyCors from "@fastify/cors";
 import dotenv from "dotenv";
 import cluster from "cluster";
 import { cpus } from "os";
+import { spawn } from "child_process";
 import { FastifyRequest, FastifyReply } from "fastify";
 
 dotenv.config();
@@ -12,6 +13,7 @@ import { registerAllRoutes } from "./utilities/routeHandler";
 import ensureSystemJackpots from "./service/jackpot/system-jackpots";
 import runJackpotScheduler from "./service/jackpot/jackpot-scheduler";
 import runCaseBattleScheduler from "./service/casebattles-scheduler";
+import runCaseRegenerationScheduler from "./service/cases-regeneration-scheduler";
 
 declare module "fastify" {
 	interface FastifyRequest {
@@ -22,6 +24,20 @@ declare module "fastify" {
 const numCPUs = cpus().length;
 if (cluster.isPrimary) {
 	console.log(`Primary process ${process.pid} is running`);
+
+	const startRustService = () => {
+		const rustProc = spawn("item-range-svc", { stdio: "inherit" });
+		rustProc.on("exit", (code, signal) => {
+			console.error(
+				`Rust microservice exited with ${
+					code !== null ? `code ${code}` : `signal ${signal}`
+				}. Restarting...`
+			);
+			setTimeout(startRustService, 1000);
+		});
+	};
+
+	startRustService();
 
 	for (let i = 0; i < numCPUs; i++) {
 		cluster.fork();
@@ -63,9 +79,11 @@ if (cluster.isPrimary) {
 			await registerAllRoutes(server);
 
 			await ensureSystemJackpots(server);
-			setInterval(() => ensureSystemJackpots(server).catch(() => {}), 30_000);
-			setInterval(() => runJackpotScheduler(server).catch(() => {}), 1_000);
-			setInterval(() => runCaseBattleScheduler(server).catch(() => {}), 1_000);
+			setInterval(() => ensureSystemJackpots(server).catch(() => {}), 2_000);
+			setInterval(() => runJackpotScheduler(server).catch(() => {}), 300);
+			setInterval(() => runCaseBattleScheduler(server).catch(() => {}), 300);
+			// Start case regeneration scheduler; it will self-schedule future runs
+			runCaseRegenerationScheduler(server).catch(() => {});
 
 			await server.listen({ port: 3000, host: "0.0.0.0" });
 

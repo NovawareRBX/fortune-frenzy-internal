@@ -3,3 +3,12 @@ dist
 .env
 output.sh
 output.txt
+
+.git
+.gitignore
+.vscode
+.idea
+
+item-range-svc/target
+item-range-svc/.env
+item-range-svc/.DS_Store

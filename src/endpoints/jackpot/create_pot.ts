@@ -12,7 +12,7 @@ const createPotSchema = z.object({
 	server_id: z.string(),
 	value_cap: z.number().positive(),
 	value_floor: z.number().positive().optional(),
-	max_players: z.number().optional(),
+	max_players: z.number().min(2).max(64).optional(),
 	starting_after: z.number().min(5).max(300).optional(),
 });
 
@@ -67,15 +67,15 @@ export default {
 				creator: user_info,
 				value_cap,
 				value_floor,
-				max_players,
+				max_players: max_players ?? 64,
 				joinable: true,
 				leaveable: true,
 				status: "waiting_for_start",
 				members: [],
-				starting_at: -1,
+				countdown_end_at: -1,
 				created_at: Date.now(),
 				updated_at: Date.now(),
-				auto_start_ts: Math.floor(Date.now() / 1000) + autoStartSec,
+				auto_start_at: Date.now() + autoStartSec * 1000,
 			});
 
 			if (!jackpotCreated) {

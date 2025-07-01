@@ -43,9 +43,6 @@ export default {
 			EX: 60 * 5,
 		});
 
-		console.log(`NEW API REGISTERED FOR SERVER ${server_id}: ${initial_api_key}`);
-		console.log(`SAVED TO REDIS AS ${createHash("sha256").update(initial_api_key).digest("hex")}`);
-
 		// i love my boyfriend
 		pgClient.release();
 		return [200, { status: "OK", api_key: initial_api_key }];

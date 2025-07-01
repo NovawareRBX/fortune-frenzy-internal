@@ -6,8 +6,22 @@ export default async function (uaids: string[]): Promise<number> {
 	if (uaids.length === 0) return 0;
 
 	try {
-		const itemIds = uaids.map((uaid) => uaid.split(":")[1]);
-		const items = await connection.query<{ value: number }>(`SELECT value FROM items WHERE id IN ($1)`, [itemIds]);
+		// Extract the numeric item IDs from the UAIDs and filter out any malformed entries
+		const itemIds = uaids
+			.map((uaid) => {
+				const idPart = uaid.split(":" /* UAID format is <prefix>:<itemId> */).pop();
+				const id = idPart ? parseInt(idPart, 10) : NaN;
+				return Number.isNaN(id) ? null : id;
+			})
+			.filter((id): id is number => id !== null);
+
+		if (itemIds.length === 0) return 0;
+
+		// Use the ANY operator to safely match against the array of IDs
+		const items = await connection.query<{ value: number }>(
+			`SELECT value FROM items WHERE id = ANY($1::bigint[])`,
+			[itemIds],
+		);
 		const totalValue = items.rows.reduce((sum: number, item: { value: number }) => sum + item.value, 0);
 
 		return totalValue;

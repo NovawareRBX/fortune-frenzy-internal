@@ -250,19 +250,24 @@ export class CoinflipRedisManager {
 			.set(gameKey, JSON.stringify(finalData), { XX: true, EX: 300 })
 			.del([player1Key])
 			.del([player2Key])
-			.sRem(this.getKey("server", finalData.server_id), id)
 			.exec();
 
 		if (result === null) {
 			return false;
 		}
 
-		// Immediate global-set cleanup; periodic schedulers will also ensure consistency.
-		try {
-			await this.redis.sRem("coinflips:global", id);
-		} catch (error) {
-			console.error(`Failed to remove coinflip ${id} from global set:`, error);
-		}
+		// Delay removal from the active coinflip sets so clients can still fetch the completed
+		// game for a short period (20 seconds). After the delay we remove the ID from both
+		// the global set and the server-specific set. Using setTimeout keeps the logic simple; a
+		// more robust production solution could move this to a background scheduler.
+		setTimeout(async () => {
+			try {
+				await this.redis.sRem("coinflips:global", id);
+				await this.redis.sRem(this.getKey("server", finalData.server_id), id);
+			} catch (error) {
+				console.error(`Deferred cleanup failed for coinflip ${id}:`, error);
+			}
+		}, 20_000);
 
 		try {
 			const clickhouse = await getClickhouseConnection();

@@ -8,10 +8,11 @@ const confirmParamsSchema = z.object({
 
 const confirmBodySchema = z.object({
 	user_id: z.string().regex(/^\d+$/),
-}).partial(); // body may be empty if swap=true
+}).partial();
 
 const confirmQuerySchema = z.object({
 	swap: z.coerce.boolean().optional(),
+	skip_locked: z.coerce.boolean().optional(),
 });
 
 export default {
@@ -28,6 +29,7 @@ export default {
 			};
 			Querystring: {
 				swap?: boolean;
+				skip_locked?: boolean;
 			};
 		}>,
 	): Promise<[number, any]> {
@@ -50,12 +52,12 @@ export default {
 			}
 
 			const { transfer_id } = paramsParse.data;
-			const { swap } = queryParse.data;
+			const { swap, skip_locked } = queryParse.data;
 			const user_id = bodyParse.success && bodyParse.data.user_id;
 
 			await connection.query("BEGIN");
 
-			const { rows: transferRows } = await connection.query("SELECT * FROM item_transfers WHERE transfer_id = $1", [transfer_id]);
+			const { rows: transferRows } = await connection.query("SELECT * FROM item_transfers WHERE transfer_id = $1 FOR UPDATE NOWAIT", [transfer_id]);
 			const transfer = transferRows[0];
 
 			if (!transfer) {
@@ -63,12 +65,22 @@ export default {
 				return [404, { error: "Transfer not found" }];
 			}
 
+			if (transfer.status === "confirmed") {
+				await connection.query("ROLLBACK");
+				return [400, { error: "Transfer has already been confirmed" }];
+			}
+
+			if (transfer.status === "canceled") {
+				await connection.query("ROLLBACK");
+				return [400, { error: "Transfer has been canceled" }];
+			}
+
 			const { rows: items } = await connection.query<{
 				id: number;
 				transfer_id: string;
 				user_id: string;
 				item_uaid: string;
-			}>("SELECT * FROM item_transfer_items WHERE transfer_id = $1", [transfer_id]);
+			}>("SELECT * FROM item_transfer_items WHERE transfer_id = $1 FOR UPDATE", [transfer_id]);
 
 			if (items.length === 0) {
 				await connection.query("DELETE FROM item_transfers WHERE transfer_id = $1", [transfer_id]);
@@ -78,34 +90,57 @@ export default {
 
 			const userasset_pairs = items.map((item) => [item.user_id, item.item_uaid]);
 			const pairPlaceholders = userasset_pairs.map((_, idx) => `($${idx * 2 + 1}, $${idx * 2 + 2})`).join(", ");
-			const owned_items_query = `SELECT owner_id, user_asset_id FROM item_copies WHERE (owner_id, user_asset_id) IN (${pairPlaceholders}) FOR UPDATE NOWAIT`;
+			const lockClause = skip_locked ? "FOR UPDATE SKIP LOCKED" : "FOR UPDATE NOWAIT";
+			const owned_items_query = `SELECT owner_id, user_asset_id FROM item_copies WHERE (owner_id, user_asset_id) IN (${pairPlaceholders}) ${lockClause}`;
 			const { rows: owned_items } = await connection.query<{ owner_id: string; user_asset_id: string }>(owned_items_query, userasset_pairs.flat());
-
 			const owned_set = new Set(owned_items.map((oi) => `${oi.owner_id}_${oi.user_asset_id}`));
-			for (const item of items) {
+			const locked_or_missing = items.filter((item) => !owned_set.has(`${item.user_id}_${item.item_uaid}`));
+
+			if (locked_or_missing.length > 0 && !skip_locked) {
+				await connection.query("ROLLBACK");
+				return [409, { error: "Some items are currently locked or unavailable" }];
+			}
+
+			const confirmed_items = skip_locked ? items.filter((item) => owned_set.has(`${item.user_id}_${item.item_uaid}`)) : items;
+			if (confirmed_items.length === 0) {
+				await connection.query("DELETE FROM item_transfers WHERE transfer_id = $1", [transfer_id]);
+				await connection.query("COMMIT");
+				return [409, { error: "All items were locked or unavailable" }];
+			}
+
+			if (skip_locked && locked_or_missing.length > 0) {
+				const lockedIds = locked_or_missing.map((li) => li.id);
+				await connection.query(
+					`DELETE FROM item_transfer_items WHERE id = ANY($1::bigint[])`,
+					[lockedIds],
+				);
+			}
+
+			const uaidPlaceholdersAll = confirmed_items.map((_, idx) => `$${idx + 2}`).join(", ");
+			
+			for (const item of confirmed_items) {
 				if (!owned_set.has(`${item.user_id}_${item.item_uaid}`)) {
-					await connection.query("DELETE FROM item_transfers WHERE transfer_id = $1", [transfer_id]);
-					await connection.query("COMMIT");
+					await connection.query("ROLLBACK");
 					return [403, { error: "Item not owned by user" }];
 				}
 			}
 
 			if (!swap) {
-				const uaidPlaceholders = items.map((_, idx) => `$${idx + 2}`).join(", ");
 				await connection.query(
-					`UPDATE item_copies SET owner_id = $1 WHERE user_asset_id IN (${uaidPlaceholders})`,
-					[user_id, ...items.map((item) => item.item_uaid)],
+					`UPDATE item_copies SET owner_id = $1 WHERE user_asset_id IN (${uaidPlaceholdersAll})`,
+					[user_id, ...confirmed_items.map((item) => item.item_uaid)],
 				);
 			} else {
-				const distinct_owners = Array.from(new Set(items.map((it) => it.user_id)));
+				const distinct_owners = Array.from(new Set(confirmed_items.map((it) => it.user_id)));
 				if (distinct_owners.length !== 2) {
 					await connection.query("ROLLBACK");
 					return [400, { error: "Swap requires exactly two distinct users in the transfer" }];
 				}
 
 				const [owner_a, owner_b] = distinct_owners;
-				const owner_a_items = items.filter((i) => i.user_id === owner_a).map((i) => i.item_uaid);
-				const owner_b_items = items.filter((i) => i.user_id === owner_b).map((i) => i.item_uaid);
+				
+				const owner_a_items = confirmed_items.filter((i) => i.user_id === owner_a).map((i) => i.item_uaid);
+				const owner_b_items = confirmed_items.filter((i) => i.user_id === owner_b).map((i) => i.item_uaid);
 
 				if (owner_a_items.length > 0) {
 					const ownerAPlaceholders = owner_a_items.map((_, idx) => `$${idx + 2}`).join(", ");
@@ -122,15 +157,24 @@ export default {
 					);
 				}
 			}
-
-			await connection.query("UPDATE item_transfers SET status = 'confirmed' WHERE transfer_id = $1", [transfer_id]);
-
+			const { rowCount: updatedRows } = await connection.query("UPDATE item_transfers SET status = 'confirmed' WHERE transfer_id = $1", [transfer_id]);
+			if (updatedRows === 0) {
+				await connection.query("ROLLBACK");
+				return [409, { error: "Transfer was modified by another operation" }];
+			}
 			await connection.query("COMMIT");
-			return [200, { status: "OK" }];
-		} catch (error) {
-			console.log(error)
+			const responsePayload: any = { status: locked_or_missing.length > 0 ? "PARTIAL" : "OK" };
+			if (locked_or_missing.length > 0) {
+				responsePayload.skipped_items = locked_or_missing.map((li) => li.item_uaid);
+			}
+
+			return [200, responsePayload];
+		} catch (error: any) {
 			await connection.query("ROLLBACK");
-			return [500, { error: "Failed to create transfer" }];
+			if (error.code === "55P03") {
+				return [409, { error: "Item is currently locked by another transaction" }];
+			}
+			return [500, { error: "Failed to confirm transfer" }];
 		} finally {
 			connection.release();
 		}

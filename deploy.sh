@@ -10,7 +10,9 @@ nc='\033[0m'
 colored_echo() {
   local color="$1"
   shift
-  echo -e "${color}$*${nc}"
+  local timestamp
+  timestamp=$(date '+%Y-%m-%d %H:%M:%S')
+  echo -e "${color}[${timestamp}] $*${nc}"
 }
 
 run() {
@@ -24,7 +26,14 @@ fi
 
 colored_echo "$green" "STARTING DEPLOYMENT..."
 
-current_port=$(grep -oP 'proxy_pass http://127\.0\.0\.1:\K[0-9]+' /etc/nginx/sites-available/nova-api)
+# Request sudo privileges upfront
+colored_echo "$yellow" "Requesting sudo privileges (you may be prompted for your password)..."
+if ! sudo -v; then
+  colored_echo "$red" "Sudo authentication failed. Aborting deployment."
+  exit 1
+fi
+
+current_port=$(sudo grep -oP 'proxy_pass http://127\.0\.0\.1:\K[0-9]+' /etc/nginx/sites-available/nova-api)
 
 if [ "$current_port" == "3101" ]; then
   new_port="3100"
@@ -42,20 +51,14 @@ if ! npm run build; then
 fi
 
 colored_echo "$yellow" "Building Docker image..."
-run docker build -t ff-internal-new .
-
-old_container=$(docker ps -q --filter "publish=${new_port}" --filter "ancestor=ff-internal" --filter "network=APIs")
-if [ -n "$old_container" ]; then
-  colored_echo "$red" "Removing current container..."
-  run docker stop $old_container
-  run docker rm $old_container
+docker build --no-cache -t ff-internal-new .
+if [ $? -ne 0 ]; then
+    colored_echo "$red" "Docker build failed. Aborting deployment."
+    exit 1
 fi
 
-if docker ps -a --format '{{.Names}}' | grep -q '^FFInternalNew$'; then
-  colored_echo "$red" "Removing pre-existing FFInternalNew container..."
-  run docker stop FFInternalNew
-  run docker rm FFInternalNew
-fi
+run docker stop FFInternalNew
+run docker rm FFInternalNew
 
 run docker run --name FFInternalNew --net APIs --net monitoring -p ${new_port}:3000 -d ff-internal-new
 

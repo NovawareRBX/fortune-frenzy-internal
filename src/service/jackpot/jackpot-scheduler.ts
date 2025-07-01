@@ -6,7 +6,7 @@ export async function runJackpotScheduler(server: FastifyInstance): Promise<void
 	const redis = await getRedisConnection();
 	const jackpotManager = new JackpotRedisManager(redis, server);
 
-	const nowSec = Math.floor(Date.now() / 1000);
+	const nowMs = Date.now();
 
 	let ids: string[] = [];
 	try {
@@ -29,9 +29,8 @@ export async function runJackpotScheduler(server: FastifyInstance): Promise<void
 
 		if (
 			pot.status === "waiting_for_start" &&
-			pot.auto_start_ts !== undefined &&
-			pot.auto_start_ts <= nowSec &&
-			pot.members.length > 0
+			pot.auto_start_at !== undefined &&
+			pot.auto_start_at <= nowMs
 		) {
 			await jackpotManager.startJackpot(id).catch((err) =>
 				console.error(`[JackpotScheduler] auto-start error for jackpot ${id}:`, err),
@@ -41,8 +40,8 @@ export async function runJackpotScheduler(server: FastifyInstance): Promise<void
 
 		if (
 			pot.status === "countdown" &&
-			pot.starting_at !== -1 &&
-			pot.starting_at <= nowSec
+			pot.countdown_end_at !== -1 &&
+			pot.countdown_end_at <= nowMs
 		) {
 			await jackpotManager.finalizeJackpot(id).catch((err) =>
 				console.error(`[JackpotScheduler] finalize error for jackpot ${id}:`, err),

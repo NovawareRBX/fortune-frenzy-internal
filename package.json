@@ -4,7 +4,8 @@
 	"main": "index.js",
 	"scripts": {
 		"build": "tsc",
-		"start": "npm run build && node dist/server.js",
+		"start": "node dist/server.js",
+		"start:dev": "npm run build && node dist/server.js",
 		"docker": "npm run build && docker stop FFInternal || true && docker rm FFInternal || true && docker rmi ff-internal:latest || true && docker build -t ff-internal . && docker run --net APIs --ip 172.18.0.11 --name FFInternal -p 3000:3000 ff-internal",
 		"deploy": "./deploy.sh"
 	},
